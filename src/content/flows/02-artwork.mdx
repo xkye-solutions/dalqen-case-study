@@ -1,0 +1,28 @@
+---
+order: 2
+num: "05 — Key flow 2 of 5"
+title: "Artwork you can measure"
+icon: "ruler-measure"
+goto: {"path": "/work/JO-0241", "view": "artwork", "scene": "artwork", "as": "layout"}
+---
+
+Every upload is a numbered Artwork version, and the client’s decision is recorded against that version. Paolo in Layout has uploaded v1.
+
+The coach rejects it: bigger numbers, and the sponsor logo goes on the back. The order moves to Revision, a stage everyone can see. v2 comes back with bigger numbers, is approved, and becomes the one **Current Approved** version.
+
+<Decisions>
+
+- **Exactly one Current Approved.** Every version is kept, but only one is the version Printing works from.
+- **A rejection needs a reason.** The client’s words stay with the version they were about.
+- **Rulers measure the print, not the screen.** Edge rulers and the grid use the file’s physical size, in inches or centimetres, and zooming never changes a measurement.
+- **No size, no ruler.** A logo file without a physical size says “Ruler unavailable for this file” instead of guessing.
+
+</Decisions>
+
+<BeforeAfter before="Proofs in a chat thread, where “the latest one” is whichever someone scrolled to." after="Numbered versions, one Current Approved, and the client’s reasons kept with each." />
+
+<Tries>
+<TryButton icon="thumb-down" goto={{ path: '/work/JO-0241', view: 'artwork', scene: 'artwork', as: 'layout', action: 'rejectArtwork', data: { reason: 'Bigger numbers, and the sponsor logo moves to the back.' } }}>Reject v1</TryButton>
+<TryButton icon="thumb-up" goto={{ path: '/work/JO-0241', view: 'artwork', scene: 'artwork', as: 'layout', action: 'approveArtwork' }}>Approve v2</TryButton>
+<TryButton icon="ruler-off" goto={{ path: '/work/JO-0241', view: 'artwork', scene: 'artwork', as: 'layout', action: 'rulerUnavailable' }}>Ruler on a file with no size</TryButton>
+</Tries>

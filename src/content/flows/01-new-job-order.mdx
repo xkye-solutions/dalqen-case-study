@@ -1,0 +1,25 @@
+---
+order: 1
+num: "05 — Key flow 1 of 5"
+title: "A new Job Order"
+icon: "file-plus"
+goto: {"path": "/work/new", "scene": "intake", "as": "admin"}
+---
+
+The key flows follow one order from start to finish: **JO-0241**, basketball uniforms for the 20 players of the Kalayaan Hoops Club, a made-up team. It starts at intake, with a customer, a Category, an Order Type and a Route.
+
+Choose Basketball Uniform and Full Apparel is already selected, because it’s that Order Type’s default Route. The new order lands in Layout’s Incoming queue at the first stage, Not Started.
+
+<Decisions>
+
+- **The Order Type narrows the Route.** Basketball Uniform allows Full Apparel or Subcon and defaults to Full Apparel, so the desk rarely has to choose.
+- **A reference is given once.** `JO-0241` names this order everywhere: on the board, in a mention, and at the pickup counter.
+- **Not Started is a real state.** An order waiting in Layout’s queue looks different from one somebody is working on.
+
+</Decisions>
+
+<BeforeAfter before="A new row in the spreadsheet, and a message to whoever is in Layout." after="A Job Order in Layout’s Incoming queue, on its Route from the start." />
+
+<Tries>
+<TryButton icon="file-plus" goto={{ path: '/work/new', scene: 'intake', as: 'admin', action: 'createOrder' }}>Create the order</TryButton>
+</Tries>

@@ -2,7 +2,39 @@
 // Dalqen on the case-study kit, as a desktop Case Study. Narrative chapters are markup; key flows come from
 // src/content/flows.
 import CaseStudy from '@xkye/case-study-kit/CaseStudy.astro';
+import Story from '@xkye/case-study-kit/Story.astro';
+import Chapter from '@xkye/case-study-kit/Chapter.astro';
+import FlowChapter from '@xkye/case-study-kit/FlowChapter.astro';
+import PrototypeFrame from '@xkye/case-study-kit/PrototypeFrame.astro';
+import BeforeAfter from '@xkye/case-study-kit/BeforeAfter.astro';
+import Decisions from '@xkye/case-study-kit/Decisions.astro';
+import Tries from '@xkye/case-study-kit/Tries.astro';
+import TryButton from '@xkye/case-study-kit/TryButton.astro';
+import { getCollection } from 'astro:content';
 import '../styles/dalqen.css';
+const flows = (await getCollection('flows')).sort((a, b) => a.data.order - b.data.order);
+
+// Screen Design V1 §1.1, light and dark
+const tokens = [
+  ['Primary', '#176B57', '#3FD6A8'],
+  ['Accent mark', '#D7F05E', '#D7F05E'],
+  ['App background', '#F3F6F1', '#101614'],
+  ['Surface', '#FFFFFF', '#1A211E'],
+  ['Text', '#17211F', '#F2F4F3'],
+  ['Muted text', '#66706D', '#A3ABA7'],
+  ['Border', '#DDE4E0', '#2A322E'],
+  ['Danger', '#B7392F', '#FF6B5E'],
+  ['Warning', '#A55F08', '#F0A93B'],
+  ['OK', '#166B53', '#4FD1A5'],
+  ['Info', '#1C4E8A', '#7FB2F0'],
+];
+const routes = [
+  ['Full Apparel', 'Layout · Approval · Document · Sizing · Printing · Heat Press · Sewing · QC · Release'],
+  ['Print & Press', 'Layout · Approval · Document · Printing · Heat Press · QC · Release'],
+  ['Print Only / DTF', 'Layout · Approval · Document · Printing · QC · Release'],
+  ['Subcon', 'Layout · Approval · Document · Subcontracting · QC · Release'],
+  ['Tarpaulin', 'Layout · Approval · Document · Printing · Finishing · QC · Release'],
+];
 ---
 <CaseStudy
   title="Dalqen Case Study"
@@ -13,10 +45,167 @@ import '../styles/dalqen.css';
   ogDescription="Every job order, from request to handover. With a live interactive prototype."
   ogImage="assets/brand/social-card-1200x630.png"
 >
-<header class="hero" id="top">
+<Fragment slot="head">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</Fragment>
+
+<header class="nav" id="nav">
   <div class="wrap">
-    <img src="assets/brand/dalqen-horizontal-color.svg" alt="Dalqen" width="232" height="52" />
-    <h1>Every job order, from request to handover.</h1>
+    <a href="#top" class="brand" aria-label="Dalqen, back to top"><img src="assets/brand/dalqen-horizontal-color.svg" alt="Dalqen" width="232" height="52" /></a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#problem">Problem</a>
+      <a href="#flows">Key flows</a>
+      <a href="#routes">Routes</a>
+      <a href="#system">Design system</a>
+    </nav>
+    <a class="nav-cta" href="prototype.html" target="_blank" rel="noopener"><i class="ti ti-app-window"></i><span>Open prototype</span></a>
   </div>
 </header>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <div class="kicker"><img src="assets/brand/dalqen-symbol-color.svg" alt="" /> An Xkye Solutions case study, in development with Monesco, our founding customer</div>
+      <h1>Every job order, from request to handover.</h1>
+      <p class="lede">Dalqen is production management for custom printing and apparel shops. Every Job Order shows which stage it’s in, who has it, which artwork is approved, and whether each item passed QC.</p>
+      <dl class="meta">
+        <div><dt>Studio</dt><dd>Xkye Solutions</dd></div>
+        <div><dt>Founding customer</dt><dd>Monesco</dd></div>
+        <div><dt>Platform</dt><dd>Web, desktop and tablet</dd></div>
+        <div><dt>Status</dt><dd>In development</dd></div>
+      </dl>
+    </div>
+    <a class="shot" href="prototype.html#/work/JO-0241" target="_blank" rel="noopener"><img src="assets/dalqen-order.png" width="880" height="560" alt="Job Order JO-0241 in Dalqen: basketball uniforms for 20 players, at the Printing stage with Layout, approval, Revision, Document and Sizing done" /></a>
+  </div>
+</header>
+
+<Story prototype="prototype.html" project="dalqen" title="Dalqen interactive prototype" device="desktop" host="dalqen" caption="Live prototype. Click around, it’s interactive. Sample data is made up.">
+    <Chapter id="context" num="01 — Context" goto={{ path: '/today', scene: 'discussion', as: 'admin' }}>
+      <h2>A busy shop, run from a spreadsheet and memory.</h2>
+      <p class="big">Monesco is a custom printing and apparel shop: team uniforms, printed shirts, DTF transfers and tarpaulins. Each job passes through Layout, Printing, Heat Press and Sewing before it goes back to the customer.</p>
+      <p>Today, every job lives in a live spreadsheet. Client approvals happen over Messenger, Facebook and WhatsApp, and departments pass work along by word of mouth.</p>
+      <p>Dalqen is the tool we’re building with Monesco to replace that. It’s in development, and the prototype beside this text is a clickable imitation of it with made-up data.</p>
+      <PrototypeFrame src="prototype.html" title="Dalqen interactive prototype" device="desktop" host="dalqen">
+        <p style="font-size:14px;margin-top:12px">Dalqen is a desktop and tablet tool, so the prototype is easier to use <a href="prototype.html" target="_blank" rel="noopener">on its own, full screen</a>.</p>
+      </PrototypeFrame>
+    </Chapter>
+
+    <Chapter id="problem" num="02 — The problem" goto={{ path: '/work', view: 'list', scene: 'discussion', as: 'admin' }}>
+      <h2>Nobody can say where a job is.</h2>
+      <p>A spreadsheet holds the list. Everything that happens to a job happens somewhere else, so three questions keep coming back.</p>
+      <div class="cards">
+        <div class="card"><div class="ic"><i class="ti ti-map-pin-question"></i></div><h3>Which stage is it in, and who has it?</h3><p>A job between Printing and Heat Press is on somebody’s table. Whose, and since when, is a question for whoever is nearby.</p></div>
+        <div class="card"><div class="ic"><i class="ti ti-photo-question"></i></div><h3>Which artwork is the approved one?</h3><p>Proofs and the client’s replies sit in chat threads. “The latest one” is whichever someone scrolled to.</p></div>
+        <div class="card"><div class="ic"><i class="ti ti-shirt"></i></div><h3>Did one jersey fail QC?</h3><p>Twenty jerseys pass and one doesn’t. Holding back the order, or letting it go, depends on someone remembering which one.</p></div>
+      </div>
+      <BeforeAfter before="A row in a spreadsheet, a proof in a chat thread, and someone who remembers." after="One Job Order that shows its stage, who has it, the approved artwork, and each item’s QC." />
+      <div class="hmw"><small>How might we</small>give a shop one place where every Job Order answers where it is, who has it, and whether it’s ready to go?</div>
+    </Chapter>
+
+    <Chapter id="model" num="03 — Built from Monesco’s spreadsheet" goto={{ path: '/work/JO-0241', view: 'details', scene: 'discussion', as: 'admin' }}>
+      <h2>One Job Order, not a folder of Projects.</h2>
+      <p>Discovery started by walking through Monesco’s live spreadsheet: what a job is, who touches it, and what happens when it comes back.</p>
+      <p>Our first model nested Projects inside an order. One request held several Projects, each with its own route, assignee, artwork and sizing. On paper it was flexible. In practice it meant an order could be in several states at once, so “where is this job?” had more than one answer.</p>
+      <p>We replaced it before building any of it. A <strong>Job Order</strong> is now one indivisible unit, with one Category, one Order Type, one Route, one current stage, one QC outcome, one release and one Discussion.</p>
+      <div class="split" aria-label="A mixed request becomes separate Job Orders">
+        <div class="split-from"><i class="ti ti-message-circle"></i>A customer asks for jerseys and a tarpaulin</div>
+        <div class="split-to">
+          <div><b class="mono">JO-0241</b><span>Basketball Uniform · Full Apparel</span></div>
+          <div><b class="mono">JO-0243</b><span>Tarpaulin · Tarpaulin</span></div>
+        </div>
+      </div>
+      <p style="margin-top:16px">A mixed request becomes separate Job Orders, one per Route. Each moves at its own pace and has its own answer.</p>
+      <BeforeAfter before="Order → Projects, each with its own route, artwork and sizing." after="One Job Order on one Route. Mixed requests become separate Job Orders." />
+    </Chapter>
+
+    <Chapter id="routes" num="04 — One shop’s process, every shop’s tool" goto={{ path: '/routes/full-apparel', scene: 'discussion', as: 'admin' }}>
+      <h2>Monesco’s process, as starter content.</h2>
+      <p>How Monesco works became five starter Routes. They’re content a shop edits in a builder, not behaviour written for one customer, so the next shop starts from them and changes what’s different.</p>
+      <ul class="route-list">
+        {routes.map(([name, path]) => <li><b>{name}</b><span>{path}</span></li>)}
+      </ul>
+      <Decisions>
+        <ul>
+          <li><strong>Publishing changes future Job Orders only.</strong> An order in flight keeps the Route version it started on, so nobody’s job changes path halfway through.</li>
+          <li><strong>Category, Order Type and Route are separate on purpose.</strong> A Basketball Uniform can be made in-house on Full Apparel or sent out on Subcon without changing what was sold.</li>
+          <li><strong>Revision is a return path, not a step on the way.</strong> It’s drawn dashed, and only a rejected artwork version goes there.</li>
+        </ul>
+      </Decisions>
+      <p style="font-size:14.5px;margin-top:16px">The draft beside this text adds an optional Packing stage after Sewing. Publish it and check how many orders keep v1.</p>
+      <Tries>
+        <TryButton icon="upload" goto={{ path: '/routes/full-apparel', scene: 'discussion', as: 'admin', action: 'publishRoute' }}>Publish v2</TryButton>
+        <TryButton icon="route" goto={{ path: '/routes', scene: 'discussion', as: 'admin' }}>See all five Routes</TryButton>
+      </Tries>
+    </Chapter>
+
+    <div id="flows">
+      {flows.map((entry) => <FlowChapter entry={entry} />)}
+    </div>
+
+    <Chapter id="system" num="06 — Design system" goto={{ path: '/work/JO-0241', view: 'details', scene: 'discussion', as: 'admin' }}>
+      <h2>Workshop green, and status you can read without colour.</h2>
+      <p>The design system is <strong>in progress</strong>. Every colour is a token with a light and a dark value, and dark mode ships with the first version, not after it. The mark on this page is <strong>interim</strong>: Dalqen doesn’t have a brand yet.</p>
+
+      <h3 class="ds-label">Tokens, light and dark</h3>
+      <div class="tokens" role="table" aria-label="Colour tokens">
+        <div class="tk head" role="row"><span role="columnheader">Role</span><span role="columnheader">Light</span><span role="columnheader">Dark</span></div>
+        {tokens.map(([role, light, dark]) => (
+          <div class="tk" role="row"><span role="cell">{role}</span><span role="cell"><i style={`background:${light}`}></i><code>{light}</code></span><span role="cell"><i style={`background:${dark}`}></i><code>{dark}</code></span></div>
+        ))}
+      </div>
+
+      <h3 class="ds-label">Type</h3>
+      <div class="type-spec">
+        <div><b style="font-size:22px;font-weight:700;letter-spacing:-.015em">Basketball uniforms</b><span>Inter · 22 · 700</span></div>
+        <div><span style="font-size:14px">Request handoff to Heat Press</span><span>Inter · 14 · 500</span></div>
+        <div><span class="mono" style="font-size:13px">JO-0241</span><span>JetBrains Mono · 13</span></div>
+        <div><span class="mono" style="font-size:13px">XS 5 · S 10 · M 20</span><span>Tabular figures</span></div>
+      </div>
+      <p class="note"><i class="ti ti-info-circle"></i>References and sizes use tabular figures, so columns of numbers line up.</p>
+
+      <h3 class="ds-label">Status, with a word every time</h3>
+      <div class="pills">
+        <span class="d-pill neutral">Not Started</span>
+        <span class="d-pill info">In Progress</span>
+        <span class="d-pill warn">Waiting on Client Approval</span>
+        <span class="d-pill ok">Ready for Pickup</span>
+        <span class="d-pill danger">QC Fail</span>
+      </div>
+      <p class="note"><i class="ti ti-eye"></i>Colour is never the only signal. Every pill carries its word, and the stage stepper uses a number, a check, or ↺ for a return path.</p>
+
+      <h3 class="ds-label">Interim mark</h3>
+      <div class="logo-row">
+        <div class="logo-tile"><img src="assets/brand/dalqen-horizontal-color.svg" alt="Dalqen interim logo" width="232" height="52" /><small>Colour</small></div>
+        <div class="logo-tile dark"><img src="assets/brand/dalqen-horizontal-reverse.svg" alt="Dalqen interim logo, reverse" width="232" height="52" /><small>Reverse</small></div>
+      </div>
+    </Chapter>
+
+    <Chapter id="outcomes" num="07 — Outcomes" goto={{ path: '/today', scene: 'release', as: 'admin' }}>
+      <h2>What the design holds itself to.</h2>
+      <p>These are design targets, <strong>not measured results</strong>. Dalqen is in development and hasn’t been used on Monesco’s floor yet, so there’s nothing to measure.</p>
+      <div class="metrics">
+        <div class="card metric"><div class="target">Target</div><div class="val">1 answer</div><div class="what">To “where is it, and who has it?”</div><p>Every Job Order shows its stage and the people responsible for it.</p></div>
+        <div class="card metric"><div class="target">Target</div><div class="val">1 version</div><div class="what">Current Approved at a time</div><p>Printing never has to guess which proof the client said yes to.</p></div>
+        <div class="card metric"><div class="target">Target</div><div class="val">0 gaps</div><div class="what">Between departments</div><p>A handoff is accepted or sent back with a note. Until then, the sender still has it.</p></div>
+        <div class="card metric"><div class="target">Target</div><div class="val">1 of 20</div><div class="what">Held back, not 20</div><p>One failed jersey is fixed and rechecked while the 19 that passed stay passed.</p></div>
+      </div>
+
+      <div class="reflection">
+        <div class="num">Reflection</div>
+        <blockquote>The most useful decision was a reversal. Nested Projects looked flexible on paper, and we replaced them with one Job Order before building any of it. Having a founding customer’s real process in front of us made that an early, cheap call instead of a late, expensive one.</blockquote>
+      </div>
+    </Chapter>
+</Story>
+
+<Fragment slot="footer">
+  <span>Dalqen case study · © Xkye Solutions</span>
+  <a href="prototype.html" target="_blank" rel="noopener">Open the full-screen prototype</a>
+</Fragment>
+
+<script>
+  // Nav state
+  const nav = document.querySelector<HTMLElement>('#nav')!;
+  addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
+</script>
 </CaseStudy>

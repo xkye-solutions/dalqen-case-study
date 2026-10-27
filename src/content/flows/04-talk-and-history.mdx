@@ -1,0 +1,26 @@
+---
+order: 4
+num: "05 — Key flow 4 of 5"
+title: "Talk and history, kept apart"
+icon: "messages"
+goto: {"path": "/work/JO-0241", "view": "discussion", "scene": "discussion", "as": "layout"}
+---
+
+Discussion is for people: comments, @mentions, replies, and chips that point at an artwork version. Activity is the order’s record: stage moves, handoffs, artwork decisions, QC results and the release, grouped and credited to whoever did them.
+
+The two never mix. A comment can’t be mistaken for a decision, and a decision is never buried between comments.
+
+<Decisions>
+
+- **Discussion is human-only.** The system never posts there, so every line in it was written by a person.
+- **Mentions only offer people who can see the order.** Nobody gets pulled into a job they can’t open.
+- **Activity is written by what people do.** Nobody types into it, so it can be trusted as the history.
+
+</Decisions>
+
+<BeforeAfter before="One chat thread where an approval, a question and a size change all look the same." after="Discussion for people and Activity for the record, each in its own tab." />
+
+<Tries>
+<TryButton icon="message-plus" goto={{ path: '/work/JO-0241', view: 'discussion', scene: 'discussion', as: 'layout', action: 'postComment' }}>Post a comment with a mention</TryButton>
+<TryButton icon="history" goto={{ path: '/work/JO-0241', view: 'activity', scene: 'discussion', as: 'layout' }}>Open Activity</TryButton>
+</Tries>

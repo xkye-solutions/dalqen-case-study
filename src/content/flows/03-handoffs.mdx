@@ -1,0 +1,26 @@
+---
+order: 3
+num: "05 — Key flow 3 of 5"
+title: "Handoffs that can’t drop work"
+icon: "arrows-exchange"
+goto: {"path": "/work", "view": "board", "scene": "handoff", "as": "printlead"}
+---
+
+Sizing is done, so Layout asks Printing to take the order. JO-0241 shows up in Printing’s Incoming column, and nothing moves until Printing says so.
+
+Carmela, the Printing lead, opens the order and checks the package: the approved artwork, the production document and the lineup. Then she either accepts it and picks the crew, or sends it back with a note about what’s missing.
+
+<Decisions>
+
+- **The receiving department accepts its own work.** A handoff is a request, not a push.
+- **Responsibility moves on acceptance.** Until Printing accepts, Layout still has the order, so it’s never between departments with nobody’s name on it.
+- **A rejection carries a note.** “Lineup is missing a size for #12” goes back to Layout with the order and stays in Activity.
+
+</Decisions>
+
+<BeforeAfter before="“I left it on your table.”" after="Layout keeps the order until Printing accepts it, with a crew." />
+
+<Tries>
+<TryButton icon="arrow-back-up" goto={{ path: '/work/JO-0241', view: 'details', scene: 'handoff', as: 'printlead', action: 'rejectHandoff', data: { note: 'Lineup is missing a size for #12.' } }}>Reject the handoff</TryButton>
+<TryButton icon="circle-check" goto={{ path: '/work/JO-0241', view: 'details', scene: 'handoff', as: 'printlead', action: 'acceptHandoff', data: { crew: ['printcrew', 'print2'] } }}>Accept with a crew</TryButton>
+</Tries>

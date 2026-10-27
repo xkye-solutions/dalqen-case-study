@@ -1,0 +1,29 @@
+---
+order: 5
+num: "05 — Key flow 5 of 5"
+title: "QC per jersey, then release"
+icon: "checklist"
+goto: {"path": "/work/JO-0241", "view": "sizing", "scene": "qc", "as": "printcrew"}
+---
+
+Overall QC is recorded per lineup item. Jun from Printing has passed 19 of the 20 jerseys, and number 7 is the one left.
+
+When #7 fails with an issue, the order stays in Overall QC and the 19 that passed stay passed. After the repair, #7 is rechecked and passes, and the order becomes Ready for Pickup.
+
+Release is for the whole order. The front desk records who received it, and is asked for the manual Payment signal, which never blocks the handover.
+
+<Decisions>
+
+- **A fail belongs to one item.** It holds the order in QC without undoing anyone else’s passes.
+- **A recheck keeps the history.** Fail, then Pass, both stay on #7’s record.
+- **Release needs a name.** “Received by” is required. Payment is a signal, not a gate.
+
+</Decisions>
+
+<BeforeAfter before="A whole order held back, or let through, on someone’s memory of which jersey was wrong." after="Twenty rows, each with its own result, and one release for the order." />
+
+<Tries>
+<TryButton icon="circle-x" goto={{ path: '/work/JO-0241', view: 'sizing', scene: 'qc', as: 'printcrew', action: 'qcFail', data: { issue: 'Number 7 pressed off-centre on the back.' } }}>Fail #7</TryButton>
+<TryButton icon="refresh" goto={{ path: '/work/JO-0241', view: 'sizing', scene: 'qc', as: 'printcrew', action: 'qcRecheck' }}>Recheck #7</TryButton>
+<TryButton icon="package-export" goto={{ path: '/work/JO-0241', view: 'details', scene: 'release', as: 'desk', action: 'release', data: { receivedBy: 'Ben Dela Cruz', payment: 'Paid' } }}>Release to the coach</TryButton>
+</Tries>
