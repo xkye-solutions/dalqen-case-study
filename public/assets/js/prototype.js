@@ -243,8 +243,8 @@
   const SCREENS = [
     [/^\/today$/, () => today()],
     [/^\/work$/, () => work()],
-    [/^\/work\/new$/, () => placeholder('New Job Order')],
-    [/^\/work\/([\w-]+)$/, (ref) => (order(ref) ? placeholder(`Job Order ${ref}`) : notFound())],
+    [/^\/work\/new$/, () => newOrder()],
+    [/^\/work\/([\w-]+)$/, (ref) => (order(ref) ? orderPage(order(ref)) : notFound())],
     [/^\/inbox$/, () => inboxPage()],
     [/^\/customers$/, () => customers()],
     [/^\/customers\/(\w+)$/, (id) => (customer(id) ? customerPage(id) : notFound())],
@@ -375,6 +375,137 @@
       ${o.crew.length ? `<span class="crew">${o.crew.map((id) => av(id, 'sm')).join('')}</span>` : ''}</a>`;
   }
 
+  // ------------------------------------------------------------------ New Job Order --
+
+  function nextRef() {
+    if (!order('JO-0241')) return 'JO-0241';
+    return 'JO-0' + (Math.max(...S.db.orders.map((o) => +o.ref.slice(3))) + 1);
+  }
+
+  function draft() {
+    if (!S.draft) S.draft = { customer: 'kalayaan', title: 'Basketball uniforms, 20 players', due: '2026-11-05', type: 'Basketball Uniform', route: 'full-apparel', priority: 'Normal', quantity: '20', notes: 'Club colours: green and white. Sponsor: Kalayaan Hardware.' };
+    return S.draft;
+  }
+
+  function newOrder() {
+    const d = draft();
+    const allowed = D.orderTypes[d.type].routes;
+    if (!allowed.includes(d.route)) d.route = D.orderTypes[d.type].default;
+    const field = (label, html, hint = '') => `<label class="field"><span>${label}</span>${html}${hint ? `<span class="hint">${hint}</span>` : ''}</label>`;
+    const opts = (pairs, v) => pairs.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
+    const types = Object.entries(D.orderTypes).map(([t, x]) => [t, `${t} · ${x.category}`]);
+    return `<a class="crumb" href="#/work" data-go="/work"><i class="ti ti-arrow-left" aria-hidden="true"></i>Work</a>` +
+      pageHead('New Job Order', `It gets reference <span class="mono">${nextRef()}</span> and starts at the Route’s first stage.`) +
+      `<form class="card form" data-form="newOrder" novalidate>
+        <div class="form-grid">
+          ${field('Customer', `<select name="customer">${opts(Object.entries(D.customers).map(([k, c]) => [k, c.name]), d.customer)}</select>`)}
+          ${field('Title', `<input name="title" value="${esc(d.title)}" required aria-describedby="title-err" />`, '<span id="title-err" class="err" role="alert"></span>')}
+          ${field('Order Type', `<select name="type" data-change="draft">${opts(types, d.type)}</select>`, `Category: ${D.orderTypes[d.type].category}`)}
+          ${field('Route', `<select name="route">${opts(allowed.map((r) => [r, `${D.routes[r].name} v${D.routes[r].versions.length}${r === D.orderTypes[d.type].default ? ' · default' : ''}`]), d.route)}</select>`, allowed.length === 1 ? 'The only Route this Order Type allows.' : `${allowed.length} Routes allowed for this Order Type.`)}
+          ${field('Due date', `<input name="due" type="date" value="${d.due}" required />`)}
+          ${field('Priority', `<select name="priority">${opts([['Normal', 'Normal'], ['Urgent', 'Urgent']], d.priority)}</select>`)}
+          ${field('Quantity <span class="muted">(optional)</span>', `<input name="quantity" inputmode="numeric" value="${esc(d.quantity)}" />`)}
+          ${field('Notes <span class="muted">(optional)</span>', `<textarea name="notes" rows="2">${esc(d.notes)}</textarea>`)}
+        </div>
+        <p class="muted small">Sizing, the lineup, artwork, files and the first assignment happen on the Job Order.</p>
+        <div class="form-actions"><a class="btn" href="#/work" data-go="/work">Cancel</a><button class="btn primary" type="submit">Create Job Order</button></div>
+      </form>`;
+  }
+
+  function createOrder(form) {
+    const f = Object.fromEntries(new FormData(form));
+    const err = form.querySelector('#title-err');
+    if (!f.title.trim()) { err.textContent = 'Give the Job Order a title.'; form.title.focus(); return; }
+    const o = storyOrder();
+    Object.assign(o, { ref: nextRef(), title: f.title.trim(), customer: f.customer, type: f.type, category: D.orderTypes[f.type].category, route: f.route, routeV: S.db.routes[f.route].versions.length, due: f.due, priority: f.priority, notes: f.notes });
+    if (o.ref !== 'JO-0241' || f.type !== 'Basketball Uniform') { o.lineup = []; o.sizes = {}; o.payment = 'Unpaid'; }
+    runSteps(o, 'create');
+    o.activity[0].text = `Created on ${D.routes[o.route].name} v${o.routeV} · ${o.category} · ${o.type}`;
+    S.db.orders.push(o); S.draft = null;
+    nav('/work/' + o.ref, 'details');
+  }
+
+  // ------------------------------------------------------------------ Job Order --
+
+  const TABS = [['details', 'Details'], ['artwork', 'Artwork'], ['sizing', 'Sizing & Lineup'], ['discussion', 'Discussion'], ['activity', 'Activity'], ['files', 'Files']];
+
+  function stepper(o) {
+    const path = pathOf(o).slice();
+    if (o.visits.some((v) => v.stage === 'revision')) path.splice(path.indexOf('approval') + 1, 0, 'revision');
+    let n = 0;
+    return `<ol class="stepper" data-stepper aria-label="Stages">${path.map((k) => {
+      const visits = o.visits.filter((v) => v.stage === k).length;
+      const isCur = k === o.stage && !o.released;
+      const ret = k === 'revision';
+      const state = isCur ? 'current' : ret ? 'return' : (o.skipped || []).includes(k) ? 'skipped' : visits || (k === 'release' && o.released) ? 'done' : 'todo';
+      if (!ret) n += 1;
+      const mark = state === 'done' ? '<i class="ti ti-check" aria-hidden="true"></i>' : ret ? '↺' : state === 'skipped' ? '–' : n;
+      const label = k === 'release' ? `Release${o.released ? ' → Released' : ''}` : stageName(k);
+      const sub = ret ? 'return path' : state === 'skipped' ? 'skipped' : state === 'todo' ? 'not reached' : state === 'current' ? (D.stages[k].dept ? dept(D.stages[k].dept) : 'Handover') : 'done';
+      return `<li data-stage="${k}" data-state="${state}" ${isCur ? 'aria-current="step"' : ''}><span class="mk">${mark}</span><span class="nm">${label}${visits > 1 ? ` <span class="mono visits">×${visits}</span>` : ''}</span><span class="st">${sub}</span></li>`;
+    }).join('')}</ol>`;
+  }
+
+  // The one action that moves this order forward, for whoever is looking. Later tasks fill in the stages.
+  function primaryAction(o) {
+    if (o.released) return '';
+    const fn = PRIMARY[o.stage];
+    return fn ? fn(o) : '';
+  }
+  const PRIMARY = {};
+
+  function orderPage(o) {
+    const view = S.views.order;
+    const r = routeOf(o);
+    const header = `<header class="card order-head" data-header>
+      <div class="oh-top"><a class="crumb" href="#/work" data-go="/work"><i class="ti ti-arrow-left" aria-hidden="true"></i>Work</a></div>
+      <div class="oh-main">
+        <div><div class="oh-ref"><span class="mono">${o.ref}</span>${statusPill(o, 'data-status-pill')}${o.priority === 'Urgent' ? pill('Urgent', 'danger') : `<span class="muted small">Normal</span>`}</div>
+          <h1>${esc(o.title)}</h1>
+          <dl class="oh-meta"><div><dt>Customer</dt><dd><a href="#/customers/${o.customer}" data-go="/customers/${o.customer}">${esc(customer(o.customer).name)}</a></dd></div><div><dt>Due</dt><dd class="mono ${!o.released && o.due < TODAY ? 'late' : ''}">${day(o.due)}</dd></div><div><dt>Order</dt><dd>${o.category} · ${esc(o.type)} · ${r.name} v${o.routeV}</dd></div></dl>
+        </div>
+        <div class="oh-side"><div class="resp-box" data-responsible><span class="label">${o.released ? 'Released' : 'Now at ' + stageName(o.stage)}</span><span class="resp-line">${o.crew.length ? `<span class="crew">${o.crew.map((id) => av(id, 'sm')).join('')}</span>` : ''}${esc(responsibleText(o))}</span></div><div class="primary-action">${primaryAction(o)}</div></div>
+      </div>
+      ${stepper(o)}
+    </header>`;
+    const tabs = `<div class="tabs" role="tablist" aria-label="Job Order sections">${TABS.map(([k, l]) => `<button role="tab" id="tab-${k}" data-view="${k}" aria-selected="${view === k}" aria-controls="panel-${k}" tabindex="${view === k ? 0 : -1}" data-act="tab">${l}${k === 'discussion' && o.comments.length ? ` <span class="mono tab-count">${o.comments.length}</span>` : ''}</button>`).join('')}</div>`;
+    return header + tabs + `<section class="card tab-panel" role="tabpanel" id="panel-${view}" aria-labelledby="tab-${view}" data-view="${view}">${PANELS[view](o)}</section>`;
+  }
+
+  const PANELS = {
+    details: (o) => `<div class="details">
+      <div><h2 class="card-title">Notes</h2><p>${esc(o.notes) || '<span class="muted">No notes.</span>'}</p></div>
+      <dl class="kv">
+        <div><dt>Payment signal</dt><dd>${o.payment} <span class="muted small">· a manual signal, never an invoice and never a release gate</span></dd></div>
+        <div><dt>Contact</dt><dd>${esc(customer(o.customer).contact)} · <span class="mono">${customer(o.customer).phone}</span> · ${customer(o.customer).channel}</dd></div>
+        <div><dt>Created</dt><dd class="mono">${day(o.created)}</dd></div>
+        <div><dt>Current Approved artwork</dt><dd>${(() => { const a = o.artwork.find((x) => x.status === 'Current Approved'); return a ? `v${a.v} · ${esc(a.file)}` : '<span class="muted">None yet</span>'; })()}</dd></div>
+      </dl></div>`,
+    artwork: (o) => `<ul class="plain">${o.artwork.map((a) => `<li data-version="${a.v}">v${a.v} · <span data-status>${a.status}</span></li>`).join('') || '<li class="muted">No artwork yet.</li>'}</ul>`,
+    sizing: (o) => sizingPanel(o),
+    discussion: (o) => `<ul class="plain">${o.comments.map((c) => `<li data-comment>${esc(person(c.by).name)}: ${esc(c.text)}</li>`).join('') || '<li class="muted">No comments yet.</li>'}</ul>`,
+    activity: (o) => `<ul class="plain">${o.activity.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ul>`,
+    files: (o) => {
+      const files = [...o.artwork.map((a) => ({ name: a.file, role: `Artwork v${a.v} · proof`, size: '1.1 MB', by: a.by, at: a.at })), ...o.files];
+      return files.length ? `<ul class="files">${files.map((f) => `<li><i class="ti ti-file-type-pdf" aria-hidden="true"></i><span><strong>${esc(f.name)}</strong><span class="sub">${f.role} · ${f.size} · ${esc(person(f.by).name)}, ${when(f.at)}</span></span></li>`).join('')}</ul>` : '<p class="muted">No files yet.</p>';
+    },
+  };
+
+  function qcText(it) {
+    const last = it.qc[it.qc.length - 1];
+    if (!last) return '';
+    if (last.result === 'Fail') return 'Awaiting Recheck';
+    return last.result;
+  }
+
+  function sizingPanel(o) {
+    const sizes = Object.entries(o.sizes);
+    const sizeLine = sizes.length ? `<p class="mono sizes">${sizes.map(([k, n]) => `${k} ${n}`).join(' · ')} <span class="muted">· ${sizes.reduce((t, [, n]) => t + n, 0)} pcs</span></p>` : '<p class="muted">No per-size counts.</p>';
+    if (!o.lineup.length) return `<h2 class="card-title">Sizes</h2>${sizeLine}<p class="muted">No lineup on this order.</p>`;
+    return `<h2 class="card-title">Sizes</h2>${sizeLine}<h2 class="card-title">Lineup <span class="muted small">${o.lineup.length} items</span></h2>
+      <div class="table-wrap"><table class="table lineup"><thead><tr><th>#</th><th>Name</th><th>Number</th><th>Top</th><th>Bottom</th><th>Qty</th><th>Notes</th><th>QC</th></tr></thead><tbody>${o.lineup.map((it) => `<tr data-item="${it.n}"><td class="mono">${it.n}</td><td>${esc(it.name)}</td><td class="mono">${it.number}</td><td class="mono">${it.top}</td><td class="mono">${it.bottom}</td><td class="mono">${it.qty}</td><td>${esc(it.notes)}</td><td data-qc>${qcText(it)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
   // ------------------------------------------------------------------ Inbox --
 
   function myInbox() { return S.db.inbox.filter((i) => i.to === S.me); }
@@ -434,6 +565,8 @@
     workView: (el) => nav('/work', el.dataset.view),
     openInbox: (el) => { const i = S.db.inbox.find((x) => x.id === el.dataset.id); i.unread = false; S.panel = null; nav('/work/' + i.ref); },
     readAll: () => { myInbox().forEach((i) => { i.unread = false; }); render(); },
+    tab: (el) => { S.views.order = el.dataset.view; render(); document.getElementById('tab-' + el.dataset.view)?.focus(); },
+    createOrder: () => { const f = document.querySelector('form[data-form="newOrder"]'); if (f) createOrder(f); },
   };
 
   document.addEventListener('click', (e) => {
@@ -443,6 +576,11 @@
     if (g) { e.preventDefault(); if (g.dataset.go === '/work') S.filter = null; nav(g.dataset.go); }
   });
   document.addEventListener('keydown', (e) => {
+    const t = e.target.closest('[role="tab"][data-act="tab"]');
+    if (t && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      const i = TABS.findIndex(([k]) => k === t.dataset.view) + (e.key === 'ArrowRight' ? 1 : -1);
+      ACTIONS.tab({ dataset: { view: TABS[(i + TABS.length) % TABS.length][0] } }); return;
+    }
     const g = e.target.closest('tr[data-go]');
     if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); nav(g.dataset.go); }
   });
@@ -450,10 +588,12 @@
     const f = e.target.dataset.form; if (!f) return;
     e.preventDefault();
     if (f === 'signin') { S.signedIn = true; if (!location.hash || location.hash === '#') nav('/today'); else render(); }
+    if (f === 'newOrder') createOrder(e.target);
     if (f === 'search') { S.q = new FormData(e.target).get('q'); S.filter = null; nav('/work', 'list'); }
   });
   document.addEventListener('change', (e) => {
     if (e.target.dataset.change === 'boardDept') { S.boardDept = e.target.value; render(); }
+    if (e.target.dataset.change === 'draft') { Object.assign(draft(), Object.fromEntries(new FormData(e.target.form))); render(); }
   });
 
   window.addEventListener('message', (e) => {
@@ -463,7 +603,7 @@
     if (m.scene && D.scenes[m.scene]) applyScene(m.scene);
     if (m.as && D.people[m.as]) { S.me = m.as; S.boardDept = null; }
     if (m.theme) S.theme = m.theme;
-    S.filter = null; S.q = ''; S.panel = null;
+    S.filter = null; S.q = ''; S.panel = null; if (m.scene) S.draft = null;
     if (m.path) { S.path = m.path; nav(m.path, m.view); } else render();
     if (m.action && ACTIONS[m.action]) setTimeout(() => ACTIONS[m.action](m.data || {}), 160);
   });
