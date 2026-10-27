@@ -296,6 +296,8 @@
 
   function nav(path, view) {
     if (view) S.views[path.startsWith('/work/') ? 'order' : 'work'] = view;
+    // Embedded, the case study's title bar shows the address, so replace it rather than adding to the page's Back history
+    if (EMBEDDED) { if (location.hash !== '#' + path) history.replaceState(null, '', '#' + path); S.path = path; S.panel = null; render(); return; }
     if (location.hash !== '#' + path) location.hash = path; else render();
   }
   window.addEventListener('hashchange', () => { S.path = location.hash.slice(1) || '/today'; S.panel = null; render(); });
@@ -541,7 +543,7 @@
       <div class="ho-head"><i class="ti ti-arrows-exchange" aria-hidden="true"></i><div><h2 id="ho-title">${dept(D.stages[h.from].dept)} asks ${dept(h.to)} to take this order</h2><p class="muted">${esc(person(h.by).name)}, ${when(h.at)} · check the package, pick the crew, then accept or reject. Until you accept, ${dept(D.stages[h.from].dept)} stays responsible.</p></div></div>
       <div class="ho-body">
         <ul class="package">${pkg.map(([l, v, ok]) => `<li><i class="ti ti-${ok ? 'circle-check' : 'alert-circle'}" aria-hidden="true"></i><span>${l}</span><span class="mono muted">${esc(v)}</span></li>`).join('')}</ul>
-        <fieldset class="crew-pick"><legend>Crew <span class="muted small">two or more</span></legend>${crew.map((id) => `<label><input type="checkbox" name="crew" value="${id}" />${av(id, 'sm')}${esc(person(id).name)}</label>`).join('')}</fieldset>
+        <fieldset class="crew-pick"><legend>Crew <span class="muted small">${crew.length > 1 ? 'two or more' : 'who takes it'}</span></legend>${crew.map((id) => `<label><input type="checkbox" name="crew" value="${id}" />${av(id, 'sm')}${esc(person(id).name)}</label>`).join('')}</fieldset>
         <div class="ho-decide"><label class="field">Note <span class="hint">Required to reject.</span><textarea name="note" rows="2"></textarea></label><span class="err" id="ho-err" role="alert"></span>
           <div class="row"><button class="btn primary" data-act="acceptHandoffUi">Accept</button><button class="btn danger" data-act="rejectHandoffUi">Reject</button></div></div>
       </div></section>`;
@@ -570,7 +572,7 @@
       <div><h2 class="card-title">Notes</h2><p>${esc(o.notes) || '<span class="muted">No notes.</span>'}</p></div>
       <dl class="kv">
         <div><dt>Payment signal</dt><dd>${o.payment} <span class="muted small">· a manual signal, never an invoice and never a release gate</span></dd></div>
-        <div><dt>Contact</dt><dd>${esc(customer(o.customer).contact)} · <span class="mono">${customer(o.customer).phone}</span> · ${customer(o.customer).channel}</dd></div>
+        <div><dt>Contact</dt><dd>${esc(customer(o.customer).contact)} · ${customer(o.customer).channel}</dd></div>
         <div><dt>Created</dt><dd class="mono">${day(o.created)}</dd></div>
         <div><dt>Current Approved artwork</dt><dd>${(() => { const a = o.artwork.find((x) => x.status === 'Current Approved'); return a ? `v${a.v} · ${esc(a.files[0].name)}` : '<span class="muted">None yet</span>'; })()}</dd></div>
       </dl></div>`,
@@ -788,12 +790,12 @@
   // ------------------------------------------------------------------ Customers --
 
   function customers() {
-    return pageHead('Customers', 'People and businesses who order from Monesco. No logins, no pipeline.') + `<section class="card flush"><div class="table-wrap"><table class="table"><thead><tr><th>Customer</th><th>Contact</th><th>Channel</th><th>Job Orders</th></tr></thead><tbody>${Object.entries(D.customers).map(([id, c]) => `<tr data-go="/customers/${id}" tabindex="0"><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}<span class="sub mono">${c.phone}</span></td><td>${c.channel}</td><td class="mono">${S.db.orders.filter((o) => o.customer === id).length}</td></tr>`).join('')}</tbody></table></div></section>`;
+    return pageHead('Customers', 'People and businesses who order from Monesco. No logins, no pipeline.') + `<section class="card flush"><div class="table-wrap"><table class="table"><thead><tr><th>Customer</th><th>Contact</th><th>Channel</th><th>Job Orders</th></tr></thead><tbody>${Object.entries(D.customers).map(([id, c]) => `<tr data-go="/customers/${id}" tabindex="0"><td><strong>${esc(c.name)}</strong></td><td>${esc(c.contact)}</td><td>${c.channel}</td><td class="mono">${S.db.orders.filter((o) => o.customer === id).length}</td></tr>`).join('')}</tbody></table></div></section>`;
   }
 
   function customerPage(id) {
     const c = customer(id);
-    return `<a class="crumb" href="#/customers" data-go="/customers"><i class="ti ti-arrow-left" aria-hidden="true"></i>Customers</a>` + pageHead(esc(c.name), `${esc(c.contact)} · <span class="mono">${c.phone}</span> · ${c.channel}`) +
+    return `<a class="crumb" href="#/customers" data-go="/customers"><i class="ti ti-arrow-left" aria-hidden="true"></i>Customers</a>` + pageHead(esc(c.name), `${esc(c.contact)} · ${c.channel}`) +
       `<section class="card flush"><h2 class="card-title pad">Job Order history</h2>${table(S.db.orders.filter((o) => o.customer === id))}</section>`;
   }
 
@@ -882,8 +884,33 @@
     if (!S.signedIn) { app.innerHTML = signIn(); report(); return; }
     let main = null;
     for (const [re, fn] of SCREENS) { const m = S.path.match(re); if (m) { main = fn(...m.slice(1)); break; } }
+    const keys = app.contains(document.activeElement) ? focusKeys(document.activeElement) : [];
     app.innerHTML = shell(main ?? notFound());
+    refocus(keys);
     report();
+  }
+
+  // A render replaces the whole app, so focus goes back to the same control, or to the nearest container that's still
+  // there (item 7's row once its Pass button is gone), instead of dropping to the page.
+  const FOCUS_ATTRS = ['act', 'filter', 'view', 'item', 'node', 'v', 'f', 'id', 'go', 'ref'];
+  function focusKeys(el) {
+    const keys = [];
+    for (; el && el.id !== 'app'; el = el.parentElement) {
+      const attrs = FOCUS_ATTRS.filter((k) => el.dataset[k] !== undefined).map((k) => `[data-${k}="${CSS.escape(el.dataset[k])}"]`);
+      if (el.name) attrs.push(`[name="${CSS.escape(el.name)}"]`);
+      if (el.id) attrs.push(`#${CSS.escape(el.id)}`);
+      if (attrs.length) keys.push(el.tagName.toLowerCase() + attrs.join(''));
+    }
+    return keys;
+  }
+  function refocus(keys) {
+    for (const k of keys) {
+      const el = document.getElementById('app').querySelector(k);
+      if (!el) continue;
+      if (el.tabIndex < 0 && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+      el.focus({ preventScroll: true });
+      return;
+    }
   }
 
   function report() {
@@ -922,7 +949,8 @@
     startStage: () => { const o = currentOrder(); o.started = true; o.crew = person(S.me).dept === stageDept(o) ? [S.me] : ['layout']; act(o, 'Assignment', `Assigned ${stageName(o.stage)} to ${names(o.crew)}`, S.me, now()); render(); },
     acceptHandoffUi: () => {
       const crew = [...document.querySelectorAll('[data-handoff] input[name="crew"]:checked')].map((i) => i.value);
-      if (crew.length < 2) { document.getElementById('ho-err').textContent = 'Pick at least two people for the crew.'; return; }
+      const need = Math.min(2, document.querySelectorAll('[data-handoff] input[name="crew"]').length);
+      if (crew.length < need) { document.getElementById('ho-err').textContent = need === 2 ? 'Pick at least two people for the crew.' : 'Pick the crew.'; return; }
       respondHandoff(currentOrder(), true, { by: S.me, at: now(), crew }); render();
     },
     rejectHandoffUi: () => {

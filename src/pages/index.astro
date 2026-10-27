@@ -83,7 +83,7 @@ const routes = [
 <Story prototype="prototype.html" project="dalqen" title="Dalqen interactive prototype" device="desktop" host="dalqen" caption="Live prototype. Click around, it’s interactive. Sample data is made up.">
     <Chapter id="context" num="01 — Context" goto={{ path: '/today', scene: 'discussion', as: 'admin' }}>
       <h2>A busy shop, run from a spreadsheet and memory.</h2>
-      <p class="big">Monesco is a custom printing and apparel shop: team uniforms, printed shirts, DTF transfers and tarpaulins. Each job passes through Layout, Printing, Heat Press and Sewing before it goes back to the customer.</p>
+      <p class="big">Monesco is a custom printing and apparel shop. Its jobs move between departments, Layout, Printing, Heat Press and Sewing, before they go back to the customer.</p>
       <p>Today, every job lives in a live spreadsheet. Client approvals happen over Messenger, Facebook and WhatsApp, and departments pass work along by word of mouth.</p>
       <p>Dalqen is the tool we’re building with Monesco to replace that. It’s in development, and the prototype beside this text is a clickable imitation of it with made-up data.</p>
       <PrototypeFrame src="prototype.html" title="Dalqen interactive prototype" device="desktop" host="dalqen">
@@ -120,8 +120,8 @@ const routes = [
     </Chapter>
 
     <Chapter id="routes" num="04 — One shop’s process, every shop’s tool" goto={{ path: '/routes/full-apparel', scene: 'discussion', as: 'admin' }}>
-      <h2>Monesco’s process, as starter content.</h2>
-      <p>How Monesco works became five starter Routes. They’re content a shop edits in a builder, not behaviour written for one customer, so the next shop starts from them and changes what’s different.</p>
+      <h2>Starter Routes, not hard-coded ones.</h2>
+      <p>Dalqen comes with five starter Routes, shaped with Monesco. They’re starter content a shop edits in a builder, not behaviour written for one customer, so each shop, Monesco included, starts from them and changes what’s different.</p>
       <ul class="route-list">
         {routes.map(([name, path]) => <li><b>{name}</b><span>{path}</span></li>)}
       </ul>

@@ -55,17 +55,17 @@ window.DALQEN_DATA = (() => {
   };
 
   const customers = {
-    kalayaan: { name: 'Kalayaan Hoops Club',        contact: 'Ben Dela Cruz (coach)', phone: '0917 555 0141', channel: 'Messenger' },
-    tigers:   { name: 'Tigers Volleyball Club',     contact: 'Liza Ramos',            phone: '0918 555 0192', channel: 'Messenger' },
-    runners:  { name: 'Sta. Rosa Runners',          contact: 'Mark Villar',           phone: '0917 555 0110', channel: 'Facebook' },
-    kusina:   { name: 'Kusina ni Lola',             contact: 'Tess Navarro',          phone: '0920 555 0133', channel: 'WhatsApp' },
-    bayview:  { name: 'Bayview Dental',             contact: 'Dr. Ella Cruz',         phone: '0917 555 0175', channel: 'Email' },
-    sanroque: { name: 'San Roque NHS Batch 2027',   contact: 'Jessa Lim',             phone: '0919 555 0108', channel: 'Messenger' },
-    bagwis:   { name: 'Bagwis Esports',             contact: 'Kiko Salazar',          phone: '0917 555 0166', channel: 'Messenger' },
-    fiesta:   { name: 'Brgy. Malaya Fiesta Committee', contact: 'Nonoy Aquino',       phone: '0921 555 0124', channel: 'Walk-in' },
-    habi:     { name: 'Habi Crafts',                contact: 'Rina Flores',           phone: '0917 555 0187', channel: 'Instagram' },
-    bayanihan:{ name: 'Bayanihan Credit Coop',      contact: 'Arnel Pascual',         phone: '0918 555 0150', channel: 'Email' },
-    lakbay:   { name: 'Lakbay Outing Group',        contact: 'Joy Mercado',           phone: '0917 555 0119', channel: 'Messenger' },
+    kalayaan: { name: 'Kalayaan Hoops Club',        contact: 'Ben Dela Cruz (coach)', channel: 'Messenger' },
+    tigers:   { name: 'Tigers Volleyball Club',     contact: 'Liza Ramos',            channel: 'Messenger' },
+    runners:  { name: 'Sta. Rosa Runners',          contact: 'Mark Villar',           channel: 'Facebook' },
+    kusina:   { name: 'Kusina ni Lola',             contact: 'Tess Navarro',          channel: 'WhatsApp' },
+    bayview:  { name: 'Bayview Dental',             contact: 'Dr. Ella Cruz',         channel: 'Email' },
+    sanroque: { name: 'San Roque NHS Batch 2027',   contact: 'Jessa Lim',             channel: 'Messenger' },
+    bagwis:   { name: 'Bagwis Esports',             contact: 'Kiko Salazar',          channel: 'Messenger' },
+    fiesta:   { name: 'Brgy. Malaya Fiesta Committee', contact: 'Nonoy Aquino',       channel: 'Walk-in' },
+    habi:     { name: 'Habi Crafts',                contact: 'Rina Flores',           channel: 'Instagram' },
+    bayanihan:{ name: 'Bayanihan Credit Coop',      contact: 'Arnel Pascual',         channel: 'Email' },
+    lakbay:   { name: 'Lakbay Outing Group',        contact: 'Joy Mercado',           channel: 'Messenger' },
   };
 
   // Other Job Orders, so Today, Work and the boards have something around JO-0241. `stage` is the current stage;

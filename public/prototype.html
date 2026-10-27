@@ -323,6 +323,7 @@
   .c-body { flex: 1; min-width: 0; }
   .c-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .role { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--tint); color: var(--primary-deep); }
+  @media (max-width: 1180px) { .art { grid-template-columns: 200px minmax(0, 1fr); } .art > .decision { grid-column: 1 / -1; } }
   .art-chip { min-height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
   .c-body p { margin: 4px 0 2px; }
   .mention { color: var(--primary-deep); font-weight: 600; background: var(--tint); border-radius: 4px; padding: 0 2px; }
