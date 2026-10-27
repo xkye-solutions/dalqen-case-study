@@ -27,6 +27,7 @@ window.DALQEN_DATA = (() => {
     printing:  { name: 'Printing',          dept: 'printing' },
     heatpress: { name: 'Heat Press',        dept: 'heatpress' },
     sewing:    { name: 'Sewing',            dept: 'sewing' },
+    packing:   { name: 'Packing',           dept: 'sewing' },
     subcon:    { name: 'Subcontracting',    dept: 'admin' },
     finishing: { name: 'Finishing',         dept: 'printing' },
     qc:        { name: 'Overall QC',        dept: 'printing' },
@@ -35,7 +36,9 @@ window.DALQEN_DATA = (() => {
 
   // The five starter Routes (D2). Revision is a return path, never part of the normal path.
   const routes = {
-    'full-apparel': { name: 'Full Apparel',       versions: [{ v: 1, stages: ['layout', 'approval', 'document', 'sizing', 'printing', 'heatpress', 'sewing', 'qc', 'release'] }] },
+    'full-apparel': { name: 'Full Apparel',       versions: [{ v: 1, stages: ['layout', 'approval', 'document', 'sizing', 'printing', 'heatpress', 'sewing', 'qc', 'release'] }],
+      // An unpublished v2 for the Routes builder: one optional stage added after Sewing.
+      draft: { v: 2, stages: ['layout', 'approval', 'document', 'sizing', 'printing', 'heatpress', 'sewing', 'packing', 'qc', 'release'], optional: ['packing'] } },
     'print-press':  { name: 'Print & Press',      versions: [{ v: 1, stages: ['layout', 'approval', 'document', 'printing', 'heatpress', 'qc', 'release'] }] },
     'print-only':   { name: 'Print Only / DTF',   versions: [{ v: 1, stages: ['layout', 'approval', 'document', 'printing', 'qc', 'release'] }] },
     'subcon':       { name: 'Subcon',             versions: [{ v: 1, stages: ['layout', 'approval', 'document', 'subcon', 'qc', 'release'] }] },

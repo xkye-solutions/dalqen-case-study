@@ -276,7 +276,7 @@
     const stop = D.scenes[name];
     S.db = { orders: D.orders.map(seedOrder), routes: clone(D.routes), inbox: clone(D.inbox), drafts: {} };
     if (stop !== 'none') S.db.orders.push(runSteps(storyOrder(), stop));
-    S.scene = name; S.art = null; S.replyTo = null; S.actFilter = null; S.releaseErr = ''; tick = 0;
+    S.scene = name; S.published = null; S.node = null; S.art = null; S.replyTo = null; S.actFilter = null; S.releaseErr = ''; tick = 0;
   }
 
   // Bring JO-0241 from its scene to a later step, as the case study's Try buttons do.
@@ -308,8 +308,8 @@
     [/^\/inbox$/, () => inboxPage()],
     [/^\/customers$/, () => customers()],
     [/^\/customers\/(\w+)$/, (id) => (customer(id) ? customerPage(id) : notFound())],
-    [/^\/routes$/, () => placeholder('Routes')],
-    [/^\/routes\/([\w-]+)$/, () => placeholder('Route builder')],
+    [/^\/routes$/, () => routesPage()],
+    [/^\/routes\/([\w-]+)$/, (key) => (S.db.routes[key] ? routeBuilder(key) : notFound())],
     [/^\/admin$/, () => admin()],
   ];
 
@@ -343,8 +343,7 @@
   }
 
   const pageHead = (title, sub = '', right = '') => `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</div>`;
-  const placeholder = (t) => pageHead(esc(t), 'Coming up in this prototype.');
-  const notFound = () => `<div class="empty"><i class="ti ti-map-question" aria-hidden="true"></i><h1>Not found</h1><p>That page isn’t in this workspace.</p><a class="btn" href="#/today" data-go="/today">Go to Today</a></div>`;
+    const notFound = () => `<div class="empty"><i class="ti ti-map-question" aria-hidden="true"></i><h1>Not found</h1><p>That page isn’t in this workspace.</p><a class="btn" href="#/today" data-go="/today">Go to Today</a></div>`;
 
   function signIn() {
     return `<div class="signin"><form data-form="signin" class="card signin-card">
@@ -461,7 +460,7 @@
           ${field('Customer', `<select name="customer">${opts(Object.entries(D.customers).map(([k, c]) => [k, c.name]), d.customer)}</select>`)}
           ${field('Title', `<input name="title" value="${esc(d.title)}" required aria-describedby="title-err" />`, '<span id="title-err" class="err" role="alert"></span>')}
           ${field('Order Type', `<select name="type" data-change="draft">${opts(types, d.type)}</select>`, `Category: ${D.orderTypes[d.type].category}`)}
-          ${field('Route', `<select name="route">${opts(allowed.map((r) => [r, `${D.routes[r].name} v${D.routes[r].versions.length}${r === D.orderTypes[d.type].default ? ' · default' : ''}`]), d.route)}</select>`, allowed.length === 1 ? 'The only Route this Order Type allows.' : `${allowed.length} Routes allowed for this Order Type.`)}
+          ${field('Route', `<select name="route">${opts(allowed.map((r) => [r, `${D.routes[r].name} v${S.db.routes[r].versions.length}${r === D.orderTypes[d.type].default ? ' · default' : ''}`]), d.route)}</select>`, allowed.length === 1 ? 'The only Route this Order Type allows.' : `${allowed.length} Routes allowed for this Order Type.`)}
           ${field('Due date', `<input name="due" type="date" value="${d.due}" required />`)}
           ${field('Priority', `<select name="priority">${opts([['Normal', 'Normal'], ['Urgent', 'Urgent']], d.priority)}</select>`)}
           ${field('Quantity <span class="muted">(optional)</span>', `<input name="quantity" inputmode="numeric" value="${esc(d.quantity)}" />`)}
@@ -798,6 +797,76 @@
       `<section class="card flush"><h2 class="card-title pad">Job Order history</h2>${table(S.db.orders.filter((o) => o.customer === id))}</section>`;
   }
 
+  // ------------------------------------------------------------------ Routes --
+
+  const latest = (r) => r.versions[r.versions.length - 1];
+
+  function routesPage() {
+    const rows = Object.entries(S.db.routes).map(([k, r]) => {
+      const p = latest(r), types = Object.entries(D.orderTypes).filter(([, t]) => t.routes.includes(k)).map(([n]) => n);
+      return `<tr data-route="${k}" data-go="/routes/${k}" tabindex="0"><td><strong>${esc(r.name)}</strong><span class="sub">${p.stages.map(stageName).join(' → ')}</span></td><td><span class="mono">v${p.v}</span>${r.draft ? ` ${pill(`Draft v${r.draft.v}`, 'info')}` : ''}</td><td>${types.map(esc).join(', ')}</td><td class="mono">${S.db.orders.filter((o) => o.route === k && !o.released).length}</td></tr>`;
+    }).join('');
+    return pageHead('Routes', 'Each Route is a production path. Order Types say which Routes they allow. A new version changes future Job Orders only.') +
+      `<section class="card flush"><div class="table-wrap"><table class="table"><thead><tr><th>Route</th><th>Published</th><th>Order Types</th><th>In flight</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  }
+
+  // What would stop a version from publishing. The starter Routes and the v2 draft pass.
+  function problems(stages) {
+    const out = [];
+    if (stages[stages.length - 1] !== 'release') out.push('The last stage must be Release.');
+    if (stages[stages.length - 2] !== 'qc') out.push('Overall QC must come right before Release.');
+    stages.filter((k) => k !== 'release' && !D.stages[k].dept).forEach((k) => out.push(`${stageName(k)} has no responsible Department.`));
+    return out;
+  }
+
+  function publishRoute(key) {
+    const r = S.db.routes[key], d = r.draft;
+    const n = S.db.orders.filter((o) => o.route === key && !o.released).length;
+    r.versions.push({ v: d.v, stages: d.stages.slice(), optional: (d.optional || []).slice() });
+    r.draft = null;
+    S.published = { route: key, v: d.v, n };
+  }
+
+  function routeBuilder(key) {
+    const r = S.db.routes[key], pub = latest(r), d = r.draft, shown = d || pub;
+    const sel = shown.stages.includes(S.node) || S.node === 'revision' ? S.node : shown.stages[0];
+    const added = (k) => d && k !== 'revision' && !pub.stages.includes(k);
+    const node = (k) => `<button class="rb-node${added(k) ? ' added' : ''}${k === 'revision' ? ' rework' : ''}" data-node="${k}" data-act="selNode" aria-pressed="${k === sel}">
+      <strong>${stageName(k)}</strong><span>${D.stages[k].dept ? dept(D.stages[k].dept) : 'Front desk handover'}</span>${(shown.optional || []).includes(k) ? '<em>Optional</em>' : ''}${added(k) ? `<em class="new">New in v${d.v}</em>` : ''}</button>`;
+    const flow = shown.stages.map((k, i) => `${i ? '<span class="rb-edge" data-edge="next" aria-hidden="true"></span>' : ''}<div class="rb-row">${node(k)}${k === 'approval' ? `<span class="rb-rework"><span data-edge="rework">Rejected →</span><span data-edge="rework">← Revised</span></span>${node('revision')}` : ''}</div>`).join('');
+    const inFlight = S.db.orders.filter((o) => o.route === key && !o.released).length;
+    const pb = S.published && S.published.route === key ? S.published : null;
+    const issues = d ? problems(d.stages) : [];
+    const status = pb
+      ? `<div class="rb-note ok" role="status" data-published><strong>v${pb.v} published.</strong> It applies to future Job Orders only. <span class="mono" data-snapshot-count>${pb.n}</span> in-flight Job Order${pb.n === 1 ? '' : 's'} keep v${pb.v - 1} and finish on it.</div>`
+      : d ? `<section class="card" data-draft><h2 class="card-title">Draft v${d.v}</h2>
+        <p class="small">Changes from v${pub.v}: ${d.stages.filter(added).map((k) => `<strong>${stageName(k)}</strong> added after ${stageName(d.stages[d.stages.indexOf(k) - 1])}${(d.optional || []).includes(k) ? ', optional' : ''}`).join('; ')}.</p>
+        <p class="small">${issues.length ? `<span class="err">${issues.map(esc).join(' ')}</span>` : `${pill('No problems', 'ok')} Ready to publish.`}</p>
+        <p class="small muted">Publishing affects future Job Orders only. The ${inFlight} in flight on v${pub.v} keep it.</p>
+        ${S.me === 'admin' ? `<button class="btn primary" data-act="publishUi" ${issues.length ? 'disabled' : ''}>Publish v${d.v}</button>` : '<p class="small muted">Only an Administrator can publish a Route.</p>'}</section>` : '';
+    return pageHead(esc(r.name), `Route · published v${pub.v}${d ? ` · draft v${d.v}` : ''}`, '<a class="btn" href="#/routes" data-go="/routes"><i class="ti ti-arrow-left" aria-hidden="true"></i>All Routes</a>') +
+      `<div class="rb"><section class="card rb-canvas" aria-label="Stages of ${esc(r.name)} v${shown.v}"><p class="rb-legend small muted"><span class="rb-key"></span>Normal path <span class="rb-key rework"></span>Return path</p><div class="rb-flow">${flow}</div></section>
+        <div class="rb-side">${status}${inspector(shown, sel)}</div></div>`;
+  }
+
+  function inspector(shown, k) {
+    const s = D.stages[k], i = shown.stages.indexOf(k), prev = shown.stages[i - 1], next = shown.stages[i + 1];
+    const handoffIn = prev && k !== 'revision' && D.stages[prev].dept !== s.dept;
+    const entry = k === 'revision' ? 'Entered when the client rejects an artwork version. It goes back to Client’s Approval with the next version.'
+      : !prev ? 'First stage. New Job Orders start here.'
+      : k === 'release' ? `Follows ${stageName(prev)} once every item passes.`
+      : handoffIn ? `Arrives by handoff from ${dept(D.stages[prev].dept)}. ${dept(s.dept)} accepts it or sends it back with a note.`
+      : `Moves on from ${stageName(prev)} with no handoff, since ${dept(s.dept)} handles both.`;
+    const crew = k === 'release' ? 'The front desk records who picked the order up.'
+      : handoffIn ? `The ${dept(s.dept)} lead picks the crew when accepting the handoff.`
+      : `The ${dept(s.dept)} people already on the order.`;
+    const row = (t, v) => `<div><dt>${t}</dt><dd>${v}</dd></div>`;
+    return `<section class="card" data-inspector aria-live="polite"><h2 class="card-title">${stageName(k)}</h2><dl class="kv">
+      ${row('Responsible', s.dept ? dept(s.dept) : 'Front desk')}${row('Crew', crew)}${row('Entry', entry)}
+      ${row('Next', k === 'revision' ? 'Client’s Approval' : next ? stageName(next) : 'Released')}
+      ${(shown.optional || []).includes(k) ? row('Optional', `The ${dept(s.dept)} lead may skip it with a reason, which stays in Activity.`) : ''}</dl></section>`;
+  }
+
   // ------------------------------------------------------------------ Administration --
 
   function admin() {
@@ -898,6 +967,10 @@
       else { S.releaseErr = ''; STEPS[stepIndex('released')][1](order('JO-0241'), d); }
       show(S.views.order);
     },
+    // Routes
+    selNode: (el) => { S.node = el.dataset.node; render(); document.querySelector(`[data-node="${S.node}"]`)?.focus(); },
+    publishUi: () => { publishRoute(S.path.split('/')[2]); render(); },
+    publishRoute: () => { S.db.routes['full-apparel'] = clone(D.routes['full-apparel']); publishRoute('full-apparel'); S.node = 'packing'; nav('/routes/full-apparel'); render(); },
     createOrder: () => { const f = document.querySelector('form[data-form="newOrder"]'); if (f) createOrder(f); },
   };
 
