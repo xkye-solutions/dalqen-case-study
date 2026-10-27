@@ -70,11 +70,11 @@
   }
 
   // What each person can see (permission key × scope, simplified to the people in this story).
-  function visible(o) {
-    const p = me();
-    if (S.me === 'admin' || S.me === 'desk') return true;
-    if (p.lead) return stageDept(o) === p.dept || (o.handoff && o.handoff.state === 'pending' && o.handoff.to === p.dept);
-    return o.crew.includes(S.me);
+  function visible(o, id = S.me) {
+    const p = person(id);
+    if (id === 'admin' || id === 'desk') return true;
+    if (p.lead) return pathOf(o).some((st) => D.stages[st].dept === p.dept) || (o.handoff && o.handoff.state === 'pending' && o.handoff.to === p.dept);
+    return o.crew.includes(id);
   }
 
   // Filters behind Today's widgets and Work's saved views: one predicate each, so a widget's count is its drill-down.
@@ -99,7 +99,7 @@
   function rowsFor(filter) {
     const q = S.q.trim().toLowerCase();
     return S.db.orders
-      .filter(visible)
+      .filter((o) => visible(o))
       .filter((o) => !filter || FILTERS[filter].fn(o))
       .filter((o) => !q || [o.ref, o.title, customer(o.customer).name, o.type].join(' ').toLowerCase().includes(q))
       .sort((a, b) => (+!!a.released - +!!b.released) || ((b.due < TODAY && !b.released) - (a.due < TODAY && !a.released)) || a.due.localeCompare(b.due));
@@ -133,6 +133,29 @@
       enter(o, 'revision', at, by, true);
     }
   }
+  // A cross-department move takes effect only when the receiving side accepts; until then the source stays responsible.
+  function requestHandoff(o, { by, at }) {
+    const to = D.stages[nextStage(o)].dept;
+    o.handoff = { to, from: o.stage, by, at, state: 'pending' };
+    act(o, 'Route & stage', `Requested handoff ${stageName(o.stage)} → ${stageName(nextStage(o))}`, by, at);
+    const lead = Object.keys(D.people).find((id) => person(id).lead && person(id).dept === to);
+    if (lead) S.db.inbox.unshift({ id: 'h' + S.db.inbox.length, to: lead, kind: 'responsibility', ref: o.ref, reason: `${dept(stageDept(o))} asks ${dept(to)} to accept a handoff`, at, unread: true });
+  }
+  function respondHandoff(o, accept, { by, at, crew, note }) {
+    const from = o.stage, to = nextStage(o);
+    if (accept) {
+      o.handoff = null; o.crew = crew;
+      act(o, 'Route & stage', `${dept(D.stages[to].dept)} accepted the handoff · ${stageName(from)} → ${stageName(to)}`, by, at);
+      act(o, 'Assignment', `${dept(D.stages[to].dept)} crew: ${names(crew)}`, by, at);
+      enter(o, to, at, by);
+    } else {
+      Object.assign(o.handoff, { state: 'rejected', note, rejectedBy: by, rejectedAt: at });
+      act(o, 'Route & stage', `${dept(o.handoff.to)} rejected the handoff: “${note}”`, by, at);
+      S.db.inbox.unshift({ id: 'h' + S.db.inbox.length, to: o.handoff.by, kind: 'exception', ref: o.ref, reason: `${dept(o.handoff.to)} rejected the handoff: ${note}`, at, unread: true });
+    }
+  }
+  function nextStage(o) { const path = pathOf(o); const i = path.indexOf(o.stage === 'revision' ? 'approval' : o.stage); return path[i + 1]; }
+
   const proof = (n, notes) => [{ name: `kalayaan-v${n}-proof.pdf`, role: 'Proof', physical: { w: 22, h: 30 }, look: n }, { name: n === 1 ? 'sponsor-logo-from-client.jpg' : `kalayaan-v${n}-source.ai`, role: n === 1 ? 'Reference' : 'Source', physical: null, look: 'logo' }];
   function enter(o, stage, at, by, ret = false) { o.stage = stage; o.visits.push({ stage, at, by, ret }); }
   function comment(o, c) { o.comments.push({ id: 'c' + (o.comments.length + 1), ...c }); }
@@ -166,17 +189,12 @@
       enter(o, 'sizing', '2026-10-23 17:05', 'layout');
     }],
     ['requestPrinting', (o) => {
-      o.handoff = { to: 'printing', from: 'sizing', by: 'layout', at: '2026-10-24 10:10', state: 'pending' };
-      act(o, 'Route & stage', 'Requested handoff Sizing → Printing', 'layout', '2026-10-24 10:10');
+      requestHandoff(o, { by: 'layout', at: '2026-10-24 10:10' });
       comment(o, { by: 'printlead', at: '2026-10-24 11:05', text: '@Paolo Reyes the lineup has two #12s. Is that right?', mentions: ['layout'] });
       comment(o, { by: 'layout', at: '2026-10-24 11:20', text: 'Yes, the Ignacio twins. Both confirmed with Coach Ben.', replyTo: 'c2' });
     }],
     ['acceptPrinting', (o, d = {}) => {
-      const crew = d.crew && d.crew.length >= 2 ? d.crew : ['printcrew', 'print2'];
-      o.handoff = null; o.crew = crew;
-      act(o, 'Route & stage', 'Printing accepted the handoff · Sizing → Printing', 'printlead', '2026-10-24 13:20');
-      act(o, 'Assignment', `Printing crew: ${names(crew)}`, 'printlead', '2026-10-24 13:20');
-      enter(o, 'printing', '2026-10-24 13:20', 'printlead');
+      respondHandoff(o, true, { by: 'printlead', at: '2026-10-24 13:20', crew: d.crew && d.crew.length >= 2 ? d.crew : ['printcrew', 'print2'] });
     }],
     ['printingTalk', (o) => {
       comment(o, { by: 'printcrew', at: '2026-10-25 09:10', text: 'Printing starts after lunch. @Ana Villanueva heads-up: 20 sets come to Heat Press tomorrow.', mentions: ['press'], chip: 'v2' });
@@ -242,7 +260,7 @@
     const stop = D.scenes[name];
     S.db = { orders: D.orders.map(seedOrder), routes: clone(D.routes), inbox: clone(D.inbox), drafts: {} };
     if (stop !== 'none') S.db.orders.push(runSteps(storyOrder(), stop));
-    S.scene = name; S.art = null; tick = 0;
+    S.scene = name; S.art = null; S.replyTo = null; S.actFilter = null; tick = 0;
   }
 
   // Bring JO-0241 from its scene to a later step, as the case study's Try buttons do.
@@ -340,7 +358,7 @@
       const n = rowsFor(k).length;
       return `<button class="widget ${tone}" data-widget="${k}" data-act="drill" data-filter="${k}"><i class="ti ti-${icon}" aria-hidden="true"></i><span class="w-label">${FILTERS[k].label}</span><span class="w-count mono" data-count>${n}</span></button>`;
     }).join('');
-    const active = S.db.orders.filter(visible).filter((o) => !o.released);
+    const active = S.db.orders.filter((o) => visible(o)).filter((o) => !o.released);
     const spread = ['layout', 'approval', 'revision', 'document', 'sizing', 'printing', 'heatpress', 'sewing', 'subcon', 'finishing', 'qc', 'release']
       .map((k) => [k, active.filter((o) => o.stage === k).length]).filter(([, n]) => n);
     const attention = rowsFor(null).filter((o) => FILTERS.overdue.fn(o) || FILTERS['due-soon'].fn(o) || o.priority === 'Urgent').slice(0, 5);
@@ -476,9 +494,39 @@
   function primaryAction(o) {
     if (o.released) return '';
     const fn = PRIMARY[o.stage];
-    return fn ? fn(o) : '';
+    if (fn) return fn(o);
+    const nx = nextStage(o);
+    if (!nx || o.stage === 'release') return '';
+    const mine = S.me === 'admin' || person(S.me).dept === stageDept(o);
+    if (o.handoff && o.handoff.state === 'pending') return `<span class="blocker">Waiting for ${dept(o.handoff.to)} to accept</span>`;
+    if (D.stages[nx].dept === stageDept(o)) return mine ? `<button class="btn primary" data-act="moveNext">Move to ${stageName(nx)}</button>` : '';
+    return mine ? `<button class="btn primary" data-act="requestHandoffUi"><i class="ti ti-arrow-right" aria-hidden="true"></i>Request handoff to ${dept(D.stages[nx].dept)}</button>` : `<span class="blocker">${dept(stageDept(o))} hands this on</span>`;
   }
-  const PRIMARY = {};
+  const PRIMARY = {
+    approval: () => `<button class="btn primary" data-act="tab" data-view="artwork"><i class="ti ti-message-2-check" aria-hidden="true"></i>Record client decision</button>`,
+    revision: (o) => `<button class="btn primary" data-act="uploadNext"><i class="ti ti-upload" aria-hidden="true"></i>Upload v${o.artwork.length + 1}</button>`,
+    layout: (o) => (!o.started ? `<button class="btn primary" data-act="startStage">Start Layout</button>` : `<button class="btn primary" data-act="uploadNext"><i class="ti ti-upload" aria-hidden="true"></i>Upload artwork v1</button>`),
+  };
+
+  function handoffPanel(o) {
+    const h = o.handoff;
+    if (!h) return '';
+    if (h.state === 'rejected') return `<div class="notice danger" data-handoff-note><i class="ti ti-arrow-back-up" aria-hidden="true"></i><div><strong>${dept(h.to)} rejected the handoff</strong><p>“${esc(h.note)}” · ${esc(person(h.rejectedBy).name)}, ${when(h.rejectedAt)}. ${dept(D.stages[h.from].dept)} stays responsible, fixes it and requests again.</p></div></div>`;
+    const receiver = S.me === 'admin' || (person(S.me).lead && person(S.me).dept === h.to);
+    if (!receiver) return `<div class="notice info"><i class="ti ti-hourglass" aria-hidden="true"></i><div><strong>Waiting for ${dept(h.to)} to accept</strong><p>Requested by ${esc(person(h.by).name)}, ${when(h.at)}. ${dept(D.stages[h.from].dept)} stays responsible until ${dept(h.to)} accepts.</p></div></div>`;
+    const approved = o.artwork.find((a) => a.status === 'Current Approved');
+    const doc = o.files.find((f) => f.role === 'Production');
+    const pkg = [['Current Approved artwork', approved ? `v${approved.v}` : 'missing', !!approved], ['Production document', doc ? doc.name : 'missing', !!doc], ['Sizes', Object.keys(o.sizes).length ? `${Object.values(o.sizes).reduce((a, b) => a + b, 0)} pcs` : 'none', true], ['Lineup', o.lineup.length ? `${o.lineup.length} items` : 'none', true]];
+    const crew = Object.keys(D.people).filter((id) => person(id).dept === h.to);
+    return `<section class="card handoff" data-handoff aria-labelledby="ho-title">
+      <div class="ho-head"><i class="ti ti-arrows-exchange" aria-hidden="true"></i><div><h2 id="ho-title">${dept(D.stages[h.from].dept)} asks ${dept(h.to)} to take this order</h2><p class="muted">${esc(person(h.by).name)}, ${when(h.at)} · check the package, pick the crew, then accept or reject. Until you accept, ${dept(D.stages[h.from].dept)} stays responsible.</p></div></div>
+      <div class="ho-body">
+        <ul class="package">${pkg.map(([l, v, ok]) => `<li><i class="ti ti-${ok ? 'circle-check' : 'alert-circle'}" aria-hidden="true"></i><span>${l}</span><span class="mono muted">${esc(v)}</span></li>`).join('')}</ul>
+        <fieldset class="crew-pick"><legend>Crew <span class="muted small">two or more</span></legend>${crew.map((id) => `<label><input type="checkbox" name="crew" value="${id}" />${av(id, 'sm')}${esc(person(id).name)}</label>`).join('')}</fieldset>
+        <div class="ho-decide"><label class="field">Note <span class="hint">Required to reject.</span><textarea name="note" rows="2"></textarea></label><span class="err" id="ho-err" role="alert"></span>
+          <div class="row"><button class="btn primary" data-act="acceptHandoffUi">Accept</button><button class="btn danger" data-act="rejectHandoffUi">Reject</button></div></div>
+      </div></section>`;
+  }
 
   function orderPage(o) {
     const view = S.views.order;
@@ -495,7 +543,7 @@
       ${stepper(o)}
     </header>`;
     const tabs = `<div class="tabs" role="tablist" aria-label="Job Order sections">${TABS.map(([k, l]) => `<button role="tab" id="tab-${k}" data-view="${k}" aria-selected="${view === k}" aria-controls="panel-${k}" tabindex="${view === k ? 0 : -1}" data-act="tab">${l}${k === 'discussion' && o.comments.length ? ` <span class="mono tab-count">${o.comments.length}</span>` : ''}</button>`).join('')}</div>`;
-    return header + tabs + `<section class="card tab-panel" role="tabpanel" id="panel-${view}" aria-labelledby="tab-${view}" data-view="${view}">${PANELS[view](o)}</section>`;
+    return header + handoffPanel(o) + tabs + `<section class="card tab-panel" role="tabpanel" id="panel-${view}" aria-labelledby="tab-${view}" data-view="${view}">${PANELS[view](o)}</section>`;
   }
 
   const PANELS = {
@@ -509,8 +557,8 @@
       </dl></div>`,
     artwork: (o) => artworkPanel(o),
     sizing: (o) => sizingPanel(o),
-    discussion: (o) => `<ul class="plain">${o.comments.map((c) => `<li data-comment>${esc(person(c.by).name)}: ${esc(c.text)}</li>`).join('') || '<li class="muted">No comments yet.</li>'}</ul>`,
-    activity: (o) => `<ul class="plain">${o.activity.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ul>`,
+    discussion: (o) => discussionPanel(o),
+    activity: (o) => activityPanel(o),
     files: (o) => {
       const files = [...o.artwork.flatMap((a) => a.files.map((f) => ({ name: f.name, role: `Artwork v${a.v} · ${f.role.toLowerCase()}`, size: f.physical ? '1.1 MB' : '240 KB', by: a.by, at: a.at }))), ...o.files];
       return files.length ? `<ul class="files">${files.map((f) => `<li><i class="ti ti-file-type-pdf" aria-hidden="true"></i><span><strong>${esc(f.name)}</strong><span class="sub">${f.role} · ${f.size} · ${esc(person(f.by).name)}, ${when(f.at)}</span></span></li>`).join('')}</ul>` : '<p class="muted">No files yet.</p>';
@@ -607,6 +655,52 @@
     return `<aside class="decision" data-decision aria-label="Decision"><h2 class="card-title">Decision</h2>${a.notes ? `<p class="small muted">${esc(a.notes)}</p>` : ''}${body}</aside>`;
   }
 
+  // ------------------------------------------------------------------ Discussion & Activity --
+
+  const viewers = (o) => Object.keys(D.people).filter((id) => visible(o, id));
+  function mentionsIn(o, text) { return viewers(o).filter((id) => text.includes('@' + person(id).name)); }
+  function linkify(o, text) {
+    let h = esc(text);
+    Object.values(D.people).forEach((p) => { h = h.split('@' + esc(p.name)).join(`<span class="mention">@${esc(p.name)}</span>`); });
+    return h;
+  }
+
+  function discussionPanel(o) {
+    const items = o.comments.map((c) => {
+      const parent = c.replyTo && o.comments.find((x) => x.id === c.replyTo);
+      return `<li data-comment id="${c.id}">${av(c.by)}<div class="c-body">
+        <div class="c-head"><strong>${esc(person(c.by).name)}</strong><span class="role">${esc(person(c.by).role)}</span><span class="mono muted small">${when(c.at)}</span>${c.chip ? `<button class="chip art-chip" data-act="selVersion" data-v="${c.chip.slice(1)}" data-goto-art="1"><i class="ti ti-photo" aria-hidden="true"></i>Artwork ${c.chip}</button>` : ''}</div>
+        ${parent ? `<a class="reply-ref" href="#${parent.id}">Replying to ${esc(person(parent.by).name)}</a>` : ''}
+        <p>${linkify(o, c.text)}</p>
+        <button class="link" data-act="reply" data-id="${c.id}">Reply</button></div></li>`;
+    }).join('');
+    const replying = S.replyTo && o.comments.find((x) => x.id === S.replyTo);
+    return `<p class="muted small">Discussion is for people. What the system did lives in Activity.</p>
+      <ul class="thread">${items || '<li class="muted">No comments yet.</li>'}</ul>
+      <form class="composer" data-form="comment">
+        ${replying ? `<div class="replying">Replying to ${esc(person(replying.by).name)} <button type="button" class="link" data-act="reply" data-id="">Cancel</button></div>` : ''}
+        <label class="sr" for="c-text">Comment</label>
+        <textarea id="c-text" name="text" rows="3" placeholder="Write a comment. Type @ to mention someone who can see this order."></textarea>
+        <div class="picker" data-mention-picker></div>
+        <div class="row"><button type="button" class="btn" disabled title="Attachments aren’t in this prototype"><i class="ti ti-paperclip" aria-hidden="true"></i>Attach</button><button class="btn primary" type="submit">Comment</button></div>
+      </form>`;
+  }
+
+  const GROUPS = ['Route & stage', 'Assignment', 'Artwork', 'QC', 'Release', 'Creation'];
+  function activityPanel(o) {
+    const f = S.actFilter;
+    const rows = o.activity.filter((a) => !f || a.group === f).slice().reverse();
+    return `<div class="views" role="group" aria-label="Filter activity"><button class="chip" aria-pressed="${!f}" data-act="actFilter" data-g="">All</button>${GROUPS.filter((g) => o.activity.some((a) => a.group === g)).map((g) => `<button class="chip" aria-pressed="${f === g}" data-act="actFilter" data-g="${g}">${g}</button>`).join('')}</div>
+      <ol class="timeline">${rows.map((a) => `<li data-event><span class="g">${a.group}</span><span class="t">${esc(a.text)}</span><span class="who">${av(a.by, 'sm')}${esc(person(a.by).name)} · <span class="mono">${when(a.at)}</span></span></li>`).join('')}</ol>`;
+  }
+
+  function addComment(o, text, by, at) {
+    const mentions = mentionsIn(o, text);
+    comment(o, { by, at, text, mentions, replyTo: S.replyTo || undefined });
+    mentions.filter((id) => id !== by).forEach((id) => S.db.inbox.unshift({ id: 'm' + S.db.inbox.length, to: id, kind: 'nudge', ref: o.ref, reason: `${person(by).name} mentioned you: “${text.slice(0, 60)}${text.length > 60 ? '…' : ''}”`, at, unread: true }));
+    S.replyTo = null;
+  }
+
   function qcText(it) {
     const last = it.qc[it.qc.length - 1];
     if (!last) return '';
@@ -683,7 +777,7 @@
     readAll: () => { myInbox().forEach((i) => { i.unread = false; }); render(); },
     tab: (el) => { S.views.order = el.dataset.view; render(); document.getElementById('tab-' + el.dataset.view)?.focus(); },
     // Artwork, by hand
-    selVersion: (el) => { S.art = { v: +el.dataset.v, f: 0 }; S.measure = ''; render(); },
+    selVersion: (el) => { S.art = { v: +el.dataset.v, f: 0 }; S.measure = ''; if (el.dataset.gotoArt) S.views.order = 'artwork'; render(); },
     selFile: (el) => { S.art = { v: +el.dataset.v, f: +el.dataset.f }; S.measure = ''; render(); },
     toggleGrid: () => { S.grid = S.grid === false; render(); },
     toggleUnit: () => { S.unit = (S.unit || 'in') === 'in' ? 'cm' : 'in'; S.measure = ''; render(); },
@@ -699,6 +793,35 @@
     uploadRevision: () => { advance('artwork', 'uploadV2'); show('artwork'); },
     approveArtwork: () => { advance('artwork', 'approveV2'); show('artwork'); },
     rulerUnavailable: () => { applyScene('artwork'); S.art = { v: 1, f: 1 }; show('artwork'); },
+    // Handoffs
+    requestHandoffUi: () => { requestHandoff(currentOrder(), { by: S.me, at: now() }); render(); },
+    moveNext: () => { const o = currentOrder(), nx = nextStage(o); act(o, 'Route & stage', `Moved ${stageName(o.stage)} → ${stageName(nx)}`, S.me, now()); enter(o, nx, now(), S.me); render(); },
+    startStage: () => { const o = currentOrder(); o.started = true; o.crew = person(S.me).dept === stageDept(o) ? [S.me] : ['layout']; act(o, 'Assignment', `Assigned ${stageName(o.stage)} to ${names(o.crew)}`, S.me, now()); render(); },
+    acceptHandoffUi: () => {
+      const crew = [...document.querySelectorAll('[data-handoff] input[name="crew"]:checked')].map((i) => i.value);
+      if (crew.length < 2) { document.getElementById('ho-err').textContent = 'Pick at least two people for the crew.'; return; }
+      respondHandoff(currentOrder(), true, { by: S.me, at: now(), crew }); render();
+    },
+    rejectHandoffUi: () => {
+      const n = document.querySelector('[data-handoff] textarea[name="note"]');
+      if (!n.value.trim()) { document.getElementById('ho-err').textContent = 'Say what’s missing so the sender can fix it.'; n.focus(); return; }
+      respondHandoff(currentOrder(), false, { by: S.me, at: now(), note: n.value.trim() }); render();
+    },
+    rejectHandoff: (d) => { applyScene('handoff'); respondHandoff(order('JO-0241'), false, { by: 'printlead', at: '2026-10-24 11:30', note: d.note || 'Lineup is missing a size for #12.' }); show('details'); },
+    acceptHandoff: (d) => { advance('handoff', 'acceptPrinting', { acceptPrinting: { crew: d.crew } }); show('details'); },
+    // Discussion & Activity
+    reply: (el) => { S.replyTo = el.dataset.id || null; render(); document.getElementById('c-text')?.focus(); },
+    pickMention: (el) => {
+      const t = document.getElementById('c-text');
+      t.value = t.value.replace(/@([^@]*)$/, '@' + el.dataset.name + ' ');
+      document.querySelector('[data-mention-picker]').innerHTML = ''; t.focus();
+    },
+    actFilter: (el) => { S.actFilter = el.dataset.g || null; render(); },
+    postComment: () => {
+      applyScene('discussion');
+      addComment(order('JO-0241'), '@Ana Villanueva numbers are white on the back and the front stays green. Thanks!', S.me, '2026-10-25 09:30');
+      show('discussion');
+    },
     createOrder: () => { const f = document.querySelector('form[data-form="newOrder"]'); if (f) createOrder(f); },
   };
 
@@ -741,7 +864,20 @@
     e.preventDefault();
     if (f === 'signin') { S.signedIn = true; if (!location.hash || location.hash === '#') nav('/today'); else render(); }
     if (f === 'newOrder') createOrder(e.target);
+    if (f === 'comment') {
+      const text = e.target.text.value.trim();
+      if (!text) { e.target.text.focus(); return; }
+      addComment(currentOrder(), text, S.me, now()); render();
+    }
     if (f === 'search') { S.q = new FormData(e.target).get('q'); S.filter = null; nav('/work', 'list'); }
+  });
+  document.addEventListener('input', (e) => {
+    if (e.target.id !== 'c-text') return;
+    const m = e.target.value.match(/@([^@]*)$/), box = document.querySelector('[data-mention-picker]');
+    if (!m || m[1].length > 24) { box.innerHTML = ''; return; }
+    const q = m[1].toLowerCase();
+    const list = viewers(currentOrder()).filter((id) => id !== S.me && person(id).name.toLowerCase().startsWith(q));
+    box.innerHTML = list.length ? `<p class="muted small">Only people who can see this order</p>${list.map((id) => `<button type="button" data-act="pickMention" data-name="${esc(person(id).name)}">${av(id, 'sm')}${esc(person(id).name)} <span class="muted small">${esc(person(id).role)}</span></button>`).join('')}` : '';
   });
   document.addEventListener('change', (e) => {
     if (e.target.dataset.change === 'boardDept') { S.boardDept = e.target.value; render(); }
