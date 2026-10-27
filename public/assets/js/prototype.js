@@ -154,6 +154,28 @@
       S.db.inbox.unshift({ id: 'h' + S.db.inbox.length, to: o.handoff.by, kind: 'exception', ref: o.ref, reason: `${dept(o.handoff.to)} rejected the handoff: ${note}`, at, unread: true });
     }
   }
+  // Overall QC: results append per lineup item (or once for the whole order). Passed items stay passed; release
+  // waits until every required result passes.
+  function recordQc(o, n, result, { by, at, issue, quiet }) {
+    const target = n ? o.lineup.find((it) => it.n === n).qc : (o.qc = o.qc || []);
+    const was = target.length && target[target.length - 1].result;
+    target.push({ result, issue, by, at });
+    if (!quiet) {
+      const who = n ? `Item ${n} (${o.lineup[n - 1].name} #${o.lineup[n - 1].number})` : 'Whole order';
+      act(o, 'QC', result === 'Fail' ? `${who} failed: “${issue}”` : `${who} ${was === 'Fail' ? 'rechecked: Pass' : 'passed'}`, by, at);
+    }
+    if (qcLeft(o) === 0) { act(o, 'QC', 'Overall QC passed · Ready for Pickup', by, at); o.crew = []; enter(o, 'release', at, by); }
+  }
+  function qcLeft(o) {
+    const passed = (list) => list.length && list[list.length - 1].result === 'Pass';
+    return o.lineup.length ? o.lineup.filter((it) => !passed(it.qc)).length : passed(o.qc || []) ? 0 : 1;
+  }
+  function doRelease(o, { receivedBy, payment, notes, by, at }) {
+    o.payment = payment || o.payment;
+    o.released = { to: receivedBy, by, at, notes: notes || '' };
+    act(o, 'Release', `Released to ${receivedBy} · payment signal ${o.payment}`, by, at);
+  }
+
   function nextStage(o) { const path = pathOf(o); const i = path.indexOf(o.stage === 'revision' ? 'approval' : o.stage); return path[i + 1]; }
 
   const proof = (n, notes) => [{ name: `kalayaan-v${n}-proof.pdf`, role: 'Proof', physical: { w: 22, h: 30 }, look: n }, { name: n === 1 ? 'sponsor-logo-from-client.jpg' : `kalayaan-v${n}-source.ai`, role: n === 1 ? 'Reference' : 'Source', physical: null, look: 'logo' }];
@@ -212,23 +234,17 @@
       o.crew = ['printcrew', 'print2']; enter(o, 'qc', '2026-10-26 17:15', 'printlead');
     }],
     ['qcRecorded', (o) => {
-      o.lineup.forEach((it) => { if (it.n !== 7) it.qc.push({ result: 'Pass', by: 'printcrew', at: '2026-10-27 09:40' }); });
+      o.lineup.forEach((it) => { if (it.n !== 7) recordQc(o, it.n, 'Pass', { by: 'printcrew', at: '2026-10-27 09:40', quiet: true }); });
       act(o, 'QC', 'Recorded Pass for 19 of 20 lineup items', 'printcrew', '2026-10-27 09:40');
     }],
     ['qcFail7', (o, d = {}) => {
-      const issue = d.issue || 'Number 7 pressed off-centre on the back.';
-      o.lineup[6].qc.push({ result: 'Fail', issue, by: 'printcrew', at: '2026-10-27 09:44' });
-      act(o, 'QC', `Item 7 (Dizon #7) failed: “${issue}”`, 'printcrew', '2026-10-27 09:44');
+      recordQc(o, 7, 'Fail', { by: 'printcrew', at: '2026-10-27 09:44', issue: d.issue || 'Number 7 pressed off-centre on the back.' });
     }],
     ['recheckPassed', (o) => {
-      o.lineup[6].qc.push({ result: 'Pass', by: 'printcrew', at: '2026-10-27 14:10' });
-      act(o, 'QC', 'Item 7 rechecked: Pass · every item passes', 'printcrew', '2026-10-27 14:10');
-      o.crew = []; enter(o, 'release', '2026-10-27 14:10', 'printcrew');
+      recordQc(o, 7, 'Pass', { by: 'printcrew', at: '2026-10-27 14:10' });
     }],
     ['released', (o, d = {}) => {
-      o.payment = d.payment || o.payment;
-      o.released = { to: d.receivedBy, by: S.me, at: '2026-10-27 17:30', notes: d.notes || '' };
-      act(o, 'Release', `Released to ${d.receivedBy} · payment ${o.payment}`, S.me, '2026-10-27 17:30');
+      doRelease(o, { ...d, by: S.me, at: '2026-10-27 17:30' });
     }],
   ];
   const stepIndex = (name) => STEPS.findIndex(([n]) => n === name);
@@ -260,7 +276,7 @@
     const stop = D.scenes[name];
     S.db = { orders: D.orders.map(seedOrder), routes: clone(D.routes), inbox: clone(D.inbox), drafts: {} };
     if (stop !== 'none') S.db.orders.push(runSteps(storyOrder(), stop));
-    S.scene = name; S.art = null; S.replyTo = null; S.actFilter = null; tick = 0;
+    S.scene = name; S.art = null; S.replyTo = null; S.actFilter = null; S.releaseErr = ''; tick = 0;
   }
 
   // Bring JO-0241 from its scene to a later step, as the case study's Try buttons do.
@@ -502,7 +518,11 @@
     if (D.stages[nx].dept === stageDept(o)) return mine ? `<button class="btn primary" data-act="moveNext">Move to ${stageName(nx)}</button>` : '';
     return mine ? `<button class="btn primary" data-act="requestHandoffUi"><i class="ti ti-arrow-right" aria-hidden="true"></i>Request handoff to ${dept(D.stages[nx].dept)}</button>` : `<span class="blocker">${dept(stageDept(o))} hands this on</span>`;
   }
+  const canRelease = () => S.me === 'admin' || S.me === 'desk';
+  const canQc = (o) => S.me === 'admin' || person(S.me).dept === stageDept(o);
   const PRIMARY = {
+    qc: (o) => `<button class="btn primary" disabled>Release</button><span class="blocker">${o.lineup.length ? `Release needs every lineup item to pass Overall QC · ${qcLeft(o)} left` : 'Release needs the whole order to pass Overall QC'}</span>`,
+    release: () => (canRelease() ? `<a class="btn primary" href="#release-panel" data-act="focusRelease">Record handover</a>` : '<span class="blocker">The front desk records the handover</span>'),
     approval: () => `<button class="btn primary" data-act="tab" data-view="artwork"><i class="ti ti-message-2-check" aria-hidden="true"></i>Record client decision</button>`,
     revision: (o) => `<button class="btn primary" data-act="uploadNext"><i class="ti ti-upload" aria-hidden="true"></i>Upload v${o.artwork.length + 1}</button>`,
     layout: (o) => (!o.started ? `<button class="btn primary" data-act="startStage">Start Layout</button>` : `<button class="btn primary" data-act="uploadNext"><i class="ti ti-upload" aria-hidden="true"></i>Upload artwork v1</button>`),
@@ -543,7 +563,7 @@
       ${stepper(o)}
     </header>`;
     const tabs = `<div class="tabs" role="tablist" aria-label="Job Order sections">${TABS.map(([k, l]) => `<button role="tab" id="tab-${k}" data-view="${k}" aria-selected="${view === k}" aria-controls="panel-${k}" tabindex="${view === k ? 0 : -1}" data-act="tab">${l}${k === 'discussion' && o.comments.length ? ` <span class="mono tab-count">${o.comments.length}</span>` : ''}</button>`).join('')}</div>`;
-    return header + handoffPanel(o) + tabs + `<section class="card tab-panel" role="tabpanel" id="panel-${view}" aria-labelledby="tab-${view}" data-view="${view}">${PANELS[view](o)}</section>`;
+    return header + handoffPanel(o) + releasePanel(o) + tabs + `<section class="card tab-panel" role="tabpanel" id="panel-${view}" aria-labelledby="tab-${view}" data-view="${view}">${PANELS[view](o)}</section>`;
   }
 
   const PANELS = {
@@ -701,19 +721,53 @@
     S.replyTo = null;
   }
 
-  function qcText(it) {
-    const last = it.qc[it.qc.length - 1];
+  function qcText(list) {
+    const last = list[list.length - 1];
     if (!last) return '';
-    if (last.result === 'Fail') return 'Awaiting Recheck';
-    return last.result;
+    return last.result === 'Fail' ? 'Awaiting Recheck' : last.result;
+  }
+  const QC_TONE = { 'Pass': 'ok', 'Awaiting Recheck': 'danger' };
+
+  function qcCell(o, it) {
+    const t = qcText(it.qc);
+    const hist = it.qc.length > 1 || (it.qc[0] && it.qc[0].result === 'Fail')
+      ? `<span class="qc-hist">${it.qc.map((r) => `${r.result}${r.issue ? `: ${esc(r.issue)}` : ''}`).join(' → ')}</span>` : '';
+    const result = `<span data-qc-result>${t ? pill(t, QC_TONE[t]) : ''}</span>`;
+    if (o.stage !== 'qc' || o.released || !canQc(o) || t === 'Pass') return result + hist;
+    return `${result}${hist}<span class="qc-actions"><button class="chip" data-act="qcPass" data-item="${it.n}">${t ? 'Recheck: Pass' : 'Pass'}</button>
+      <input name="issue" placeholder="Issue" aria-label="Issue for item ${it.n}" /><button class="chip" data-act="qcFailUi" data-item="${it.n}">Fail</button><span class="err" role="alert"></span></span>`;
+  }
+
+  function releasePanel(o) {
+    if (o.stage !== 'release') return '';
+    if (o.released) return `<section class="card release done" data-release id="release-panel"><i class="ti ti-package-export" aria-hidden="true"></i><div><h2>Released to ${esc(o.released.to)}</h2><p class="muted">${esc(person(o.released.by).name)} recorded the handover, ${when(o.released.at)} · payment signal ${o.payment}${o.released.notes ? ` · “${esc(o.released.notes)}”` : ''}</p></div></section>`;
+    if (!canRelease()) return `<section class="card release" data-release id="release-panel"><div class="notice info"><i class="ti ti-package" aria-hidden="true"></i><div><strong>Ready for pickup</strong><p>Every check passed. The front desk records the handover when the customer collects it.</p></div></div></section>`;
+    const lineup = o.lineup.length ? `<p class="mono small">${o.lineup.length} items · ${o.lineup.map((it) => `#${it.number} ${esc(it.name)}`).join(' · ')}</p>` : '<p class="muted small">No lineup: the whole order goes out together.</p>';
+    return `<section class="card release" data-release id="release-panel" aria-labelledby="rel-title">
+      <div class="ho-head"><i class="ti ti-package" aria-hidden="true"></i><div><h2 id="rel-title">Ready for pickup: record the handover</h2><p class="muted">The whole order goes out at once. Dalqen records who released it and when.</p></div></div>
+      <div class="rel-body">
+        <div><h3 class="label">Final lineup</h3>${lineup}</div>
+        <div class="rel-form">
+          <label class="field">Received by <span class="hint">Required: the person who collected it.</span><input name="receivedBy" autocomplete="off" aria-describedby="rel-err" /></label>
+          <fieldset class="pay"><legend>Payment signal <span class="hint">Record where it stands now. It never blocks release.</span></legend>${['Unpaid', 'Partial', 'Paid'].map((v) => `<label><input type="radio" name="payment" value="${v}" ${o.payment === v ? 'checked' : ''} />${v}</label>`).join('')}</fieldset>
+          <label class="field">Notes <span class="hint">Optional</span><input name="notes" /></label>
+          <span class="err" id="rel-err" role="alert">${S.releaseErr || ''}</span>
+          <div class="row"><button class="btn primary" data-act="releaseUi"><i class="ti ti-check" aria-hidden="true"></i>Complete release</button></div>
+        </div>
+      </div></section>`;
   }
 
   function sizingPanel(o) {
     const sizes = Object.entries(o.sizes);
     const sizeLine = sizes.length ? `<p class="mono sizes">${sizes.map(([k, n]) => `${k} ${n}`).join(' · ')} <span class="muted">· ${sizes.reduce((t, [, n]) => t + n, 0)} pcs</span></p>` : '<p class="muted">No per-size counts.</p>';
-    if (!o.lineup.length) return `<h2 class="card-title">Sizes</h2>${sizeLine}<p class="muted">No lineup on this order.</p>`;
+    if (!o.lineup.length) {
+      const t = qcText(o.qc || []);
+      const whole = o.stage === 'qc' || t ? `<div class="qc-whole" data-qc-whole><h2 class="card-title">Overall QC · whole order</h2><p>No lineup, so one result covers the whole order. <span data-qc-result>${t ? pill(t, QC_TONE[t]) : ''}</span></p>${o.stage === 'qc' && canQc(o) && t !== 'Pass' ? `<div class="row qc-actions"><button class="chip" data-act="qcPass" data-item="0">Pass</button><input name="issue" placeholder="Issue" aria-label="Issue" /><button class="chip" data-act="qcFailUi" data-item="0">Fail</button><span class="err" role="alert"></span></div>` : ''}</div>` : '';
+      return `<h2 class="card-title">Sizes</h2>${sizeLine}<p class="muted">No lineup on this order.</p>${whole}`;
+    }
     return `<h2 class="card-title">Sizes</h2>${sizeLine}<h2 class="card-title">Lineup <span class="muted small">${o.lineup.length} items</span></h2>
-      <div class="table-wrap"><table class="table lineup"><thead><tr><th>#</th><th>Name</th><th>Number</th><th>Top</th><th>Bottom</th><th>Qty</th><th>Notes</th><th>QC</th></tr></thead><tbody>${o.lineup.map((it) => `<tr data-item="${it.n}"><td class="mono">${it.n}</td><td>${esc(it.name)}</td><td class="mono">${it.number}</td><td class="mono">${it.top}</td><td class="mono">${it.bottom}</td><td class="mono">${it.qty}</td><td>${esc(it.notes)}</td><td data-qc>${qcText(it)}</td></tr>`).join('')}</tbody></table></div>`;
+      ${o.stage === 'qc' && !o.released ? `<p class="qc-note">Overall QC · ${o.lineup.length - qcLeft(o)} of ${o.lineup.length} passed. A failed item stays here for repair and recheck; the rest stay passed.</p>` : ''}
+      <div class="table-wrap"><table class="table lineup"><thead><tr><th>#</th><th>Name</th><th>Number</th><th>Top</th><th>Bottom</th><th>Qty</th><th>Notes</th><th>QC</th></tr></thead><tbody>${o.lineup.map((it) => `<tr data-item="${it.n}"><td class="mono">${it.n}</td><td>${esc(it.name)}</td><td class="mono">${it.number}</td><td class="mono">${it.top}</td><td class="mono">${it.bottom}</td><td class="mono">${it.qty}</td><td>${esc(it.notes)}</td><td data-qc>${qcCell(o, it)}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   // ------------------------------------------------------------------ Inbox --
@@ -822,10 +876,33 @@
       addComment(order('JO-0241'), '@Ana Villanueva numbers are white on the back and the front stays green. Thanks!', S.me, '2026-10-25 09:30');
       show('discussion');
     },
+    // QC & release
+    qcPass: (el) => { recordQc(currentOrder(), +el.dataset.item, 'Pass', { by: S.me, at: now() }); render(); },
+    qcFailUi: (el) => {
+      const box = el.closest('.qc-actions'), issue = box.querySelector('input[name="issue"]');
+      if (!issue.value.trim()) { box.querySelector('[role="alert"]').textContent = 'Describe the issue.'; issue.focus(); return; }
+      recordQc(currentOrder(), +el.dataset.item, 'Fail', { by: S.me, at: now(), issue: issue.value.trim() }); render();
+    },
+    releaseUi: () => {
+      const f = document.querySelector('[data-release]'), who = f.querySelector('input[name="receivedBy"]').value.trim();
+      if (!who) { S.releaseErr = 'Say who received the order.'; render(); document.querySelector('[data-release] input[name="receivedBy"]').focus(); return; }
+      S.releaseErr = '';
+      doRelease(currentOrder(), { receivedBy: who, payment: f.querySelector('input[name="payment"]:checked')?.value, notes: f.querySelector('input[name="notes"]').value.trim(), by: S.me, at: now() }); render();
+    },
+    focusRelease: () => document.querySelector('[data-release] input[name="receivedBy"]')?.focus(),
+    qcFail: (d) => { advance('qc', 'qcFail7', { qcFail7: { issue: d.issue } }); show('sizing'); reveal('tr[data-item="7"]'); },
+    qcRecheck: () => { advance('qc', 'recheckPassed'); show('sizing'); reveal('tr[data-item="7"]'); },
+    release: (d) => {
+      applyScene('release');
+      if (!d.receivedBy) S.releaseErr = 'Say who received the order.';
+      else { S.releaseErr = ''; STEPS[stepIndex('released')][1](order('JO-0241'), d); }
+      show(S.views.order);
+    },
     createOrder: () => { const f = document.querySelector('form[data-form="newOrder"]'); if (f) createOrder(f); },
   };
 
   const currentOrder = () => order(S.path.split('/')[2]);
+  const reveal = (sel) => setTimeout(() => document.querySelector(sel)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
   function show(view) { S.views.order = view; S.measure = ''; nav('/work/JO-0241', view); render(); }
 
   // Click-and-drag measurement on a scaled proof, in the viewer's unit.
