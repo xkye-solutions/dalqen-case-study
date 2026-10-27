@@ -1,0 +1,55 @@
+:root {
+  /* Dalqen tokens (Screen Design V1, §1.1) */
+  --primary: #176B57;
+  --primary-deep: #125544;
+  --accent-mark: #D7F05E; /* marks and active states only: never text on light, never a status */
+  --bg-app: #F3F6F1;
+  --bg-surface: #FFFFFF;
+  --bg-sidebar: #FBFCFC;
+  --text: #17211F;
+  --text-muted: #66706D;
+  --border: #DDE4E0;
+  --status-danger: #B7392F;
+  --status-warn: #A55F08;
+  --status-ok: #166B53;
+  --status-info: #1C4E8A;
+  --status-neutral: #4D5653;
+  /* The same tokens in dark, for the design system swatches */
+  --dark-primary: #3FD6A8;
+  --dark-primary-deep: #7FE3C4;
+  --dark-bg-app: #101614;
+  --dark-bg-surface: #1A211E;
+  --dark-bg-sidebar: #151B19;
+  --dark-text: #F2F4F3;
+  --dark-text-muted: #A3ABA7;
+  --dark-border: #2A322E;
+  --dark-status-danger: #FF6B5E;
+  --dark-status-warn: #F0A93B;
+  --dark-status-ok: #4FD1A5;
+  --dark-status-info: #7FB2F0;
+  --dark-status-neutral: #A3ABA7;
+  /* Page roles */
+  --bg: var(--bg-app);
+  --surface: var(--bg-surface);
+  --ink: var(--text);
+  --muted: var(--text-muted);
+  --line: var(--border);
+  --accent: var(--primary);
+  --font: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  /* The kit's desktop title bar */
+  --cs-bar-bg: #101614;
+  --cs-bar-fg: #A3ABA7;
+  --cs-bar-strong: #F2F4F3;
+  --cs-mono: var(--mono);
+  --cs-window-shadow: 0 0 0 1px rgba(23,33,31,.08), 0 40px 80px -30px rgba(18,85,68,.35);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+body { margin: 0; font: 16px/1.65 var(--font); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.wrap { max-width: 1600px; margin: 0 auto; padding: 0 40px; }
+code, .mono { font-family: var(--mono); font-size: .86em; font-variant-numeric: tabular-nums; }

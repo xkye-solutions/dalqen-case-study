@@ -1,0 +1,22 @@
+---
+// Dalqen on the case-study kit, as a desktop Case Study. Narrative chapters are markup; key flows come from
+// src/content/flows.
+import CaseStudy from '@xkye/case-study-kit/CaseStudy.astro';
+import '../styles/dalqen.css';
+---
+<CaseStudy
+  title="Dalqen Case Study"
+  description="Dalqen: production management for custom printing and apparel shops, in development with Monesco. A case study by Xkye Solutions with a live interactive prototype."
+  site="https://dalqen.xkye.app/"
+  analyticsToken={import.meta.env.PUBLIC_CF_BEACON_TOKEN}
+  ogTitle="Dalqen Case Study · Xkye Solutions"
+  ogDescription="Every job order, from request to handover. With a live interactive prototype."
+  ogImage="assets/brand/social-card-1200x630.png"
+>
+<header class="hero" id="top">
+  <div class="wrap">
+    <img src="assets/brand/dalqen-horizontal-color.svg" alt="Dalqen" width="232" height="52" />
+    <h1>Every job order, from request to handover.</h1>
+  </div>
+</header>
+</CaseStudy>
