@@ -108,6 +108,32 @@
   // ------------------------------------------------------------------ the story order --
 
   function act(o, group, text, by, at) { o.activity.push({ group, text, by, at }); }
+  let tick = 0;
+  const now = () => { tick += 7; const m = 10 * 60 + tick; return `${TODAY} ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+
+  function uploadVersion(o, { by, at, notes, files }) {
+    const v = o.artwork.length + 1;
+    o.artwork.push({ v, status: 'Pending', by, at, notes, files });
+    act(o, 'Artwork', `Uploaded artwork v${v} for client approval`, by, at);
+    enter(o, 'approval', at, by);
+    S.art = null;
+  }
+
+  // Record the client's decision against the exact version. Approve locks it as the one Current Approved version.
+  function decide(o, v, decision, { by, at, reason }) {
+    const a = o.artwork.find((x) => x.v === v);
+    if (decision === 'approve') {
+      o.artwork.forEach((x) => { if (x.status === 'Current Approved') x.status = 'Superseded'; });
+      Object.assign(a, { status: 'Current Approved', decidedBy: by, decidedAt: at });
+      act(o, 'Artwork', `Client approved v${v} · now the Current Approved version`, by, at);
+      enter(o, 'document', at, by);
+    } else {
+      Object.assign(a, { status: 'Rejected', reason, decidedBy: by, decidedAt: at });
+      act(o, 'Artwork', `Client rejected v${v}: “${reason}”`, by, at);
+      enter(o, 'revision', at, by, true);
+    }
+  }
+  const proof = (n, notes) => [{ name: `kalayaan-v${n}-proof.pdf`, role: 'Proof', physical: { w: 22, h: 30 }, look: n }, { name: n === 1 ? 'sponsor-logo-from-client.jpg' : `kalayaan-v${n}-source.ai`, role: n === 1 ? 'Reference' : 'Source', physical: null, look: 'logo' }];
   function enter(o, stage, at, by, ret = false) { o.stage = stage; o.visits.push({ stage, at, by, ret }); }
   function comment(o, c) { o.comments.push({ id: 'c' + (o.comments.length + 1), ...c }); }
 
@@ -122,26 +148,17 @@
       act(o, 'Assignment', 'Assigned Layout to Paolo Reyes', 'admin', '2026-10-20 09:20');
     }],
     ['uploadV1', (o) => {
-      o.artwork.push({ v: 1, status: 'Pending', by: 'layout', at: '2026-10-21 14:05', file: 'kalayaan-v1-proof.pdf', scaled: true, notes: 'Green body, white numbers front and back.' });
-      act(o, 'Artwork', 'Uploaded artwork v1 for client approval', 'layout', '2026-10-21 14:05');
-      enter(o, 'approval', '2026-10-21 14:05', 'layout');
+      uploadVersion(o, { by: 'layout', at: '2026-10-21 14:05', notes: 'Green body, white numbers front and back.', files: proof(1) });
     }],
     ['rejectV1', (o, d = {}) => {
-      const v = o.artwork.find((a) => a.v === 1);
-      Object.assign(v, { status: 'Rejected', reason: d.reason || 'Bigger numbers, and the sponsor logo moves to the back.', decidedBy: 'layout', decidedAt: '2026-10-22 10:30' });
-      act(o, 'Artwork', `Client rejected v1: “${v.reason}”`, 'layout', '2026-10-22 10:30');
-      enter(o, 'revision', '2026-10-22 10:30', 'layout', true);
+      decide(o, 1, 'reject', { by: 'layout', at: '2026-10-22 10:30', reason: d.reason || 'Bigger numbers, and the sponsor logo moves to the back.' });
       comment(o, { by: 'layout', at: '2026-10-22 10:35', text: 'Coach Ben replied on Messenger: bigger numbers, and the sponsor logo goes on the back. Revising now.', chip: 'v1' });
     }],
     ['uploadV2', (o) => {
-      o.artwork.push({ v: 2, status: 'Pending', by: 'layout', at: '2026-10-22 16:40', file: 'kalayaan-v2-proof.pdf', scaled: true, notes: 'Numbers 10 in on the back, 4 in on the front. Sponsor logo on the back.' });
-      act(o, 'Artwork', 'Uploaded artwork v2 for client approval', 'layout', '2026-10-22 16:40');
-      enter(o, 'approval', '2026-10-22 16:40', 'layout');
+      uploadVersion(o, { by: 'layout', at: '2026-10-22 16:40', notes: 'Bigger numbers: 6 in on the front, 10 in on the back. Sponsor logo moves to the back.', files: proof(2) });
     }],
     ['approveV2', (o) => {
-      Object.assign(o.artwork.find((a) => a.v === 2), { status: 'Current Approved', decidedBy: 'layout', decidedAt: '2026-10-23 11:15' });
-      act(o, 'Artwork', 'Client approved v2 · now the Current Approved version', 'layout', '2026-10-23 11:15');
-      enter(o, 'document', '2026-10-23 11:15', 'layout');
+      decide(o, 2, 'approve', { by: 'layout', at: '2026-10-23 11:15' });
     }],
     ['documentDone', (o) => {
       o.files.push({ name: 'kalayaan-production-doc.pdf', role: 'Production', size: '2.4 MB', by: 'layout', at: '2026-10-23 17:05' });
@@ -211,7 +228,7 @@
     const stagesOf = D.routes[s.route].versions[0].stages;
     const o = {
       ...clone(s), category: D.orderTypes[s.type].category, routeV: 1, started: !s.notStarted, notes: '', comments: [], activity: [], files: [],
-      lineup: [], sizes: {}, artwork: [{ v: 1, status: s.pendingArtwork ? 'Pending' : 'Current Approved', by: 'layout', at: s.created + ' 15:00', file: `${s.ref.toLowerCase()}-v1-proof.pdf`, scaled: true }],
+      lineup: [], sizes: {}, artwork: [{ v: 1, status: s.pendingArtwork ? 'Pending' : 'Current Approved', by: 'layout', at: s.created + ' 15:00', files: [{ name: `${s.ref.toLowerCase()}-v1-proof.pdf`, role: 'Proof', physical: { w: 22, h: 30 }, look: 2 }] }],
       handoff: s.handoff ? { to: s.handoff, from: s.stage, by: 'layout', at: '2026-10-26 10:45', state: 'pending' } : null,
       visits: stagesOf.slice(0, stagesOf.indexOf(s.stage) + 1).map((st) => ({ stage: st, at: s.created, by: 'admin', ret: false })),
       released: s.released || null,
@@ -225,6 +242,15 @@
     const stop = D.scenes[name];
     S.db = { orders: D.orders.map(seedOrder), routes: clone(D.routes), inbox: clone(D.inbox), drafts: {} };
     if (stop !== 'none') S.db.orders.push(runSteps(storyOrder(), stop));
+    S.scene = name; S.art = null; tick = 0;
+  }
+
+  // Bring JO-0241 from its scene to a later step, as the case study's Try buttons do.
+  function advance(scene, until, data = {}) {
+    applyScene(scene);
+    const o = order('JO-0241');
+    for (const [n, fn] of STEPS.slice(stepIndex(D.scenes[scene]) + 1, stepIndex(until) + 1)) fn(o, data[n]);
+    return o;
   }
 
   function runSteps(o, until, data = {}) {
@@ -479,17 +505,107 @@
         <div><dt>Payment signal</dt><dd>${o.payment} <span class="muted small">· a manual signal, never an invoice and never a release gate</span></dd></div>
         <div><dt>Contact</dt><dd>${esc(customer(o.customer).contact)} · <span class="mono">${customer(o.customer).phone}</span> · ${customer(o.customer).channel}</dd></div>
         <div><dt>Created</dt><dd class="mono">${day(o.created)}</dd></div>
-        <div><dt>Current Approved artwork</dt><dd>${(() => { const a = o.artwork.find((x) => x.status === 'Current Approved'); return a ? `v${a.v} · ${esc(a.file)}` : '<span class="muted">None yet</span>'; })()}</dd></div>
+        <div><dt>Current Approved artwork</dt><dd>${(() => { const a = o.artwork.find((x) => x.status === 'Current Approved'); return a ? `v${a.v} · ${esc(a.files[0].name)}` : '<span class="muted">None yet</span>'; })()}</dd></div>
       </dl></div>`,
-    artwork: (o) => `<ul class="plain">${o.artwork.map((a) => `<li data-version="${a.v}">v${a.v} · <span data-status>${a.status}</span></li>`).join('') || '<li class="muted">No artwork yet.</li>'}</ul>`,
+    artwork: (o) => artworkPanel(o),
     sizing: (o) => sizingPanel(o),
     discussion: (o) => `<ul class="plain">${o.comments.map((c) => `<li data-comment>${esc(person(c.by).name)}: ${esc(c.text)}</li>`).join('') || '<li class="muted">No comments yet.</li>'}</ul>`,
     activity: (o) => `<ul class="plain">${o.activity.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ul>`,
     files: (o) => {
-      const files = [...o.artwork.map((a) => ({ name: a.file, role: `Artwork v${a.v} · proof`, size: '1.1 MB', by: a.by, at: a.at })), ...o.files];
+      const files = [...o.artwork.flatMap((a) => a.files.map((f) => ({ name: f.name, role: `Artwork v${a.v} · ${f.role.toLowerCase()}`, size: f.physical ? '1.1 MB' : '240 KB', by: a.by, at: a.at }))), ...o.files];
       return files.length ? `<ul class="files">${files.map((f) => `<li><i class="ti ti-file-type-pdf" aria-hidden="true"></i><span><strong>${esc(f.name)}</strong><span class="sub">${f.role} · ${f.size} · ${esc(person(f.by).name)}, ${when(f.at)}</span></span></li>`).join('')}</ul>` : '<p class="muted">No files yet.</p>';
     },
   };
+
+  // ------------------------------------------------------------------ Artwork --
+
+  const ART_TONE = { 'Pending': 'warn', 'Rejected': 'danger', 'Superseded': 'neutral', 'Current Approved': 'ok' };
+  const canReview = () => S.me === 'layout' || S.me === 'admin';
+
+  function selected(o) {
+    const a = (S.art && o.artwork.find((x) => x.v === S.art.v)) || o.artwork[o.artwork.length - 1];
+    return { a, f: a && a.files[S.art && S.art.v === a.v ? S.art.f : 0] };
+  }
+
+  function artworkPanel(o) {
+    if (!o.artwork.length) return `<div class="empty"><i class="ti ti-photo" aria-hidden="true"></i><p>No artwork yet. Layout uploads v1 for the client’s approval.</p>${PRIMARY.layout ? PRIMARY.layout(o) : ''}</div>`;
+    const { a, f } = selected(o);
+    const revised = o.artwork.length - 1;
+    const list = `<div class="art-list"><h2 class="card-title">Versions <span class="muted small">${revised ? `revised ${revised}×` : 'first version'}</span></h2><ul>${o.artwork.slice().reverse().map((x) => `<li data-version="${x.v}" class="${x.v === a.v ? 'on' : ''}"><button data-act="selVersion" data-v="${x.v}" aria-pressed="${x.v === a.v}">
+      <span class="v-top"><strong>v${x.v}</strong><span class="pill ${ART_TONE[x.status]}" data-status>${x.status}</span></span>
+      <span class="sub">${esc(person(x.by).name)} · ${when(x.at)}</span>
+      ${x.decidedBy ? `<span class="sub">${x.status === 'Rejected' ? 'Rejected' : 'Approved'} by ${esc(person(x.decidedBy).name)} · ${when(x.decidedAt)}</span>` : ''}
+      ${x.reason ? `<span class="reason">“${esc(x.reason)}”</span>` : ''}</button></li>`).join('')}</ul></div>`;
+    return `<div class="art">${list}<div class="art-view">${viewer(a, f)}</div>${decisionPanel(o, a)}</div>`;
+  }
+
+  function viewer(a, f) {
+    const chips = `<div class="file-chips" role="group" aria-label="Files in v${a.v}">${a.files.map((x, i) => `<button class="chip" data-act="selFile" data-v="${a.v}" data-f="${i}" aria-pressed="${x === f}">${esc(x.role)} · ${esc(x.name)}</button>`).join('')}</div>`;
+    if (!f.physical) {
+      return chips + `<div class="ruler-off"><div class="logo-ref" aria-label="Client reference image"><span>Kalayaan</span><span>Hardware</span></div>
+        <div class="notice warn" role="note"><i class="ti ti-ruler-off" aria-hidden="true"></i><div><strong>Ruler unavailable for this file</strong><p>This file carries no reliable physical size. Dalqen never infers size from screen zoom and doesn’t ask you to calibrate, so it shows no ruler. A scaled PDF or image can be measured.</p></div></div></div>`;
+    }
+    const unit = S.unit || 'in';
+    const k = unit === 'in' ? 1 : 2.54;
+    const W = f.physical.w * k, H = f.physical.h * k;
+    const step = unit === 'in' ? 1 : 2, label = unit === 'in' ? 2 : 10;
+    const Hpx = 400, px = Hpx / H, Wpx = Math.round(W * px);
+    const ticks = (len, horiz) => {
+      let out = '';
+      for (let i = 0; i <= len + 1e-6; i += step) {
+        const major = Math.abs(i % label) < 1e-6, l = major ? 12 : 6, at = (i * px).toFixed(1);
+        out += horiz ? `<line x1="${at}" y1="${22 - l}" x2="${at}" y2="22" />` : `<line x1="${22 - l}" y1="${at}" x2="22" y2="${at}" />`;
+        if (major && i) out += horiz ? `<text x="${(+at + 3).toFixed(1)}" y="10">${i}</text>` : `<text x="2" y="${(+at - 3).toFixed(1)}">${i}</text>`;
+      }
+      return out;
+    };
+    let grid = '';
+    for (let x = step; x < W; x += step) grid += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" />`;
+    for (let y = step; y < H; y += step) grid += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" />`;
+    return chips + `<div class="measure-bar"><span class="mono" data-dims>Sheet ${W.toFixed(1)} × ${H.toFixed(1)} ${unit}</span>
+        <span class="mono" data-measure>${S.measure || 'Drag on the artwork to measure'}</span>
+        <span class="tools"><button class="chip" data-act="toggleGrid" aria-pressed="${S.grid !== false}">Grid</button><button class="chip" data-act="toggleUnit" aria-label="Switch units">${unit === 'in' ? 'in → cm' : 'cm → in'}</button></span></div>
+      <div class="ruled" style="grid-template-columns: 22px ${Wpx}px; grid-template-rows: 22px ${Hpx}px">
+        <span class="corner mono" aria-hidden="true">${unit}</span>
+        <svg class="ruler" data-ruler="top" width="${Wpx}" height="22" aria-hidden="true">${ticks(W, true)}</svg>
+        <svg class="ruler" data-ruler="left" width="22" height="${Hpx}" aria-hidden="true">${ticks(H, false)}</svg>
+        <svg class="canvas" data-canvas width="${Wpx}" height="${Hpx}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Artwork v${a.v} proof, ${W.toFixed(1)} by ${H.toFixed(1)} ${unit}">
+          <rect width="${W}" height="${H}" class="sheet" />
+          <g transform="scale(${k})">${jersey(f.look)}</g>
+          ${S.grid !== false ? `<g class="grid" data-grid>${grid}</g>` : ''}
+          <line class="mline" data-line x1="0" y1="0" x2="0" y2="0" />
+        </svg>
+      </div>`;
+  }
+
+  // The proof itself, drawn in inches on a 22 × 30 in sheet. v2 has the bigger numbers the client asked for.
+  function jersey(look) {
+    const big = look === 2;
+    return `<path d="M7 3 L10 3 Q11 6.2 12 3 L15 3 L15.6 7.5 Q16.6 10 18.5 10.8 L18.5 27 L3.5 27 L3.5 10.8 Q5.4 10 6.4 7.5 Z" fill="#176B57" />
+      <path d="M10 3 Q11 6.2 12 3" fill="none" stroke="#D7F05E" stroke-width=".35" />
+      <text x="11" y="12.6" text-anchor="middle" font-size="${big ? 1.7 : 1.45}" font-weight="700" fill="#fff" font-family="Inter, sans-serif" letter-spacing=".08">KALAYAAN</text>
+      <text x="11" y="${big ? 21 : 19.4}" text-anchor="middle" font-size="${big ? 6 : 4}" font-weight="800" fill="#fff" font-family="Inter, sans-serif">7</text>
+      ${big ? '' : '<text x="11" y="24.6" text-anchor="middle" font-size=".8" fill="#D7F05E" font-family="Inter, sans-serif">KALAYAAN HARDWARE</text>'}`;
+  }
+
+  function decisionPanel(o, a) {
+    let body;
+    if (a.status === 'Pending' && o.stage === 'approval') {
+      body = canReview()
+        ? `<p>The client answers outside Dalqen: Messenger, a call, or at the counter. Record what they decided about <strong>v${a.v}</strong>.</p>
+          <label class="field">Reason <span class="hint">Required to reject. Kept in history.</span><textarea name="reason" rows="3" aria-describedby="reason-err"></textarea></label>
+          <span id="reason-err" class="err" role="alert"></span>
+          <div class="row"><button class="btn primary" data-act="approve" data-v="${a.v}"><i class="ti ti-check" aria-hidden="true"></i>Approve v${a.v}</button><button class="btn danger" data-act="reject" data-v="${a.v}"><i class="ti ti-x" aria-hidden="true"></i>Reject</button></div>`
+        : `<p class="muted">Layout records the client’s decision.</p>`;
+    } else if (a.status === 'Current Approved') {
+      body = `<p><strong>v${a.v} is the Current Approved version.</strong> It’s the only one production uses, and it’s locked: a change needs a reasoned Reopen for revision and a new client approval.</p>`;
+    } else if (a.status === 'Rejected') {
+      body = `<p>Rejected by the client: “${esc(a.reason)}”</p>${o.stage === 'revision' ? `<p class="muted">Revision is a return path. Layout keeps the order and uploads the next version.</p>${canReview() ? `<button class="btn primary" data-act="uploadNext"><i class="ti ti-upload" aria-hidden="true"></i>Upload v${o.artwork.length + 1}</button>` : ''}` : ''}`;
+    } else {
+      body = `<p class="muted">${a.status === 'Superseded' ? 'Replaced by a later approved version.' : 'Waiting for the order to reach Client’s Approval.'}</p>`;
+    }
+    return `<aside class="decision" data-decision aria-label="Decision"><h2 class="card-title">Decision</h2>${a.notes ? `<p class="small muted">${esc(a.notes)}</p>` : ''}${body}</aside>`;
+  }
 
   function qcText(it) {
     const last = it.qc[it.qc.length - 1];
@@ -566,8 +682,44 @@
     openInbox: (el) => { const i = S.db.inbox.find((x) => x.id === el.dataset.id); i.unread = false; S.panel = null; nav('/work/' + i.ref); },
     readAll: () => { myInbox().forEach((i) => { i.unread = false; }); render(); },
     tab: (el) => { S.views.order = el.dataset.view; render(); document.getElementById('tab-' + el.dataset.view)?.focus(); },
+    // Artwork, by hand
+    selVersion: (el) => { S.art = { v: +el.dataset.v, f: 0 }; S.measure = ''; render(); },
+    selFile: (el) => { S.art = { v: +el.dataset.v, f: +el.dataset.f }; S.measure = ''; render(); },
+    toggleGrid: () => { S.grid = S.grid === false; render(); },
+    toggleUnit: () => { S.unit = (S.unit || 'in') === 'in' ? 'cm' : 'in'; S.measure = ''; render(); },
+    approve: (el) => { decide(currentOrder(), +el.dataset.v, 'approve', { by: S.me, at: now() }); render(); },
+    reject: (el) => {
+      const r = document.querySelector('[data-decision] textarea[name="reason"]');
+      if (!r.value.trim()) { document.getElementById('reason-err').textContent = 'Say why the client rejected it. The reason stays in history.'; r.focus(); return; }
+      decide(currentOrder(), +el.dataset.v, 'reject', { by: S.me, at: now(), reason: r.value.trim() }); render();
+    },
+    uploadNext: () => { const o = currentOrder(); uploadVersion(o, { by: S.me, at: now(), notes: 'Revised after the client’s feedback.', files: proof(o.artwork.length + 1) }); S.views.order = 'artwork'; render(); },
+    // Artwork, from the case study
+    rejectArtwork: (d) => { advance('artwork', 'rejectV1', { rejectV1: { reason: d.reason } }); show('artwork'); },
+    uploadRevision: () => { advance('artwork', 'uploadV2'); show('artwork'); },
+    approveArtwork: () => { advance('artwork', 'approveV2'); show('artwork'); },
+    rulerUnavailable: () => { applyScene('artwork'); S.art = { v: 1, f: 1 }; show('artwork'); },
     createOrder: () => { const f = document.querySelector('form[data-form="newOrder"]'); if (f) createOrder(f); },
   };
+
+  const currentOrder = () => order(S.path.split('/')[2]);
+  function show(view) { S.views.order = view; S.measure = ''; nav('/work/JO-0241', view); render(); }
+
+  // Click-and-drag measurement on a scaled proof, in the viewer's unit.
+  let drag = null;
+  document.addEventListener('pointerdown', (e) => {
+    const svg = e.target.closest('[data-canvas]'); if (!svg) return;
+    const pt = (ev) => { const m = svg.getScreenCTM().inverse(); const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m); return [q.x, q.y]; };
+    drag = { svg, pt, a: pt(e) }; svg.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const [x1, y1] = drag.a, [x2, y2] = drag.pt(e), line = drag.svg.querySelector('[data-line]');
+    Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => line.setAttribute(k, v));
+    S.measure = `Measured ${Math.hypot(x2 - x1, y2 - y1).toFixed(1)} ${S.unit || 'in'}`;
+    document.querySelector('[data-measure]').textContent = S.measure;
+  });
+  document.addEventListener('pointerup', () => { drag = null; });
 
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act]');
