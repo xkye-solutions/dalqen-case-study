@@ -113,6 +113,7 @@
   .empty { display: grid; justify-items: center; gap: 8px; padding: 60px 0; text-align: center; }
   .empty i { font-size: 36px; }
   .empty-row { padding: 16px; margin: 0; }
+  .column .empty-row { color: var(--status-neutral); } /* muted text is under 4.5:1 on the column's tint */
 
   /* Today */
   .widgets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
@@ -122,7 +123,7 @@
   .widget.danger i { color: var(--status-danger); } .widget.warn i { color: var(--status-warn); } .widget.ok i { color: var(--status-ok); } .widget.info i { color: var(--status-info); } .widget.neutral i { color: var(--status-neutral); }
   .w-count { grid-area: count; justify-self: end; font-size: 24px; font-weight: 600; }
   .w-label { grid-area: label; font-weight: 600; font-size: 13px; }
-  .spread { display: flex; gap: 4px; }
+  .spread { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 4px; }
   .spread-cell { min-width: 64px; display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; background: var(--tint); font-size: 12px; color: var(--text-muted); }
   .spread-cell .mono { font-size: 16px; font-weight: 600; color: var(--text); }
 
@@ -239,6 +240,11 @@
   .stepper li[data-state="current"] .mk { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
   .stepper li[data-state="return"] .mk { border-style: dashed; border-color: var(--status-warn); color: var(--status-warn); }
   .stepper li[data-stage="revision"] .st { color: var(--status-warn); }
+  /* Narrower than a 1280 desktop: labels go under their marks and the stages wrap, so the current one never scrolls out of view */
+  @media (max-width: 1180px) {
+    .stepper { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); overflow: visible; row-gap: 8px; }
+    .stepper li { min-width: 0; grid-template-columns: 1fr; grid-template-areas: "mk" "nm" "st"; row-gap: 4px; }
+  }
   .stepper li[data-state="todo"] .nm { color: var(--text-muted); font-weight: 500; }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: -8px; overflow-x: auto; }
   .tabs button { min-height: 40px; padding: 0 14px; border: 0; background: none; cursor: pointer; font-weight: 600; color: var(--text-muted); border-bottom: 2px solid transparent; white-space: nowrap; }
